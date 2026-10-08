@@ -28,7 +28,7 @@
 - Linux；当前实测 Arch Linux。
 - ChatGPT Desktop：可复用已安装版本；未安装时会询问并下载到仓库。
 - 当前适配版本：`chatgpt-desktop 26.930.21537-1`。
-- Node.js 22+/npm 与 Python 3.11+：启动脚本自动检测，缺失时询问并本地安装。无需 `flock`。
+- Node.js 22+/npm 与 Python 3.11+：启动脚本自动检测，缺失时询问并本地安装。
 - 首次自动下载建议至少 3 GiB 空间；基本引导工具为 POSIX shell、curl 或 wget、tar、sha256sum，以及 Linux `ldd`。
 - 宿主系统须具备 Electron 所需的 glibc、GTK、NSS 等原生库；启动前会检测缺失项。
 
