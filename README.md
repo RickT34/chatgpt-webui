@@ -1,8 +1,10 @@
 # chatgpt-webui
 
-在浏览器中使用本机 ChatGPT Desktop 的原版界面，管理宿主机上的 Codex 项目和会话。
+**简体中文** | [English](README.en.md)
 
-项目复用已安装 App 的 HTML、JavaScript、CSS 和原后端，通过 WebSocket 适配 Electron 通信。无需重新实现聊天界面，也不直接连接独立的 Codex app-server。
+在浏览器中远程使用 ChatGPT Desktop 的原版界面，管理宿主机上的 Codex 项目和会话。
+
+项目复用已安装 App 的 HTML、JavaScript、CSS 和原后端，通过 WebSocket 适配 Electron 通信。
 
 > 非官方实验项目，与 OpenAI 无隶属关系。本仓库只分发适配代码，不包含 ChatGPT 安装包、原版前端资源、账号凭据或会话数据。使用者需要自行安装桌面 App 并完成登录。
 
@@ -10,7 +12,6 @@
 
 ![chatgpt-webui 原版界面](docs/images/screenshot.png)
 
-截图来自实际运行界面；真实项目名、会话标题和当前项目位置已用不透明遮盖及示例名称替换，未包含私人对话内容。
 
 ## 功能
 
@@ -22,8 +23,6 @@
 - 支持 SSH 转发或 Nginx HTTPS / WebSocket 反向代理。
 - 用脚本生成可撤销的 App 副本，保留源版本及补丁校验记录，方便升级后重新应用。
 
-基本操作和项目文件夹选择已由使用者手动测试通过；自动检查覆盖认证、目录选择、消息编码和真实 App-host 通信。语音、视频、原生文件拖放、内嵌浏览器及 MCP App 沙箱等功能未完整验收。
-
 ## 环境要求
 
 - Linux；当前实测 Arch Linux。
@@ -32,8 +31,6 @@
 - Node.js 22+/npm 与 Python 3.11+：启动脚本自动检测，缺失时询问并本地安装。无需 `flock`。
 - 首次自动下载建议至少 3 GiB 空间；基本引导工具为 POSIX shell、curl 或 wget、tar、sha256sum，以及 Linux `ldd`。
 - 宿主系统须具备 Electron 所需的 glibc、GTK、NSS 等原生库；启动前会检测缺失项。
-
-这是桌面 App 的浏览器适配层，仍需在宿主机运行 Electron。依赖原 App 私有协议，新版本需要重新测试；暂不承诺其他系统或版本兼容。
 
 ## 快速开始
 
@@ -68,11 +65,7 @@ scripts/start.sh --yes --ozone-platform=headless --disable-gpu
 | Python | [Astral uv](https://docs.astral.sh/uv/guides/install-python/) 获取 Python 3.12 standalone 构建；不是 python.org 发布的 Linux 二进制 | `.deps/python/`、`.deps/uv/` |
 | npm 依赖 | `package-lock.json`，执行 `npm ci --ignore-scripts` | `node_modules/`，缓存 `.deps/cache/` |
 
-App 的 `.deb` **仅解包 App 文件**，不执行维护脚本，不注册系统包；不需要 sudo，也不会改变系统 PATH 或 shell 配置。uv 引导安装会要求 `sha256sum`，防止跳过二进制校验。
-
-原生系统库不能可靠地按发行版混装进项目，因此缺少 glibc/GTK/NSS 等库时会列出具体缺失项并停止，需用宿主发行版的包管理器补齐。没有 curl/wget 等最基础引导工具时也会明确提示；不会自动执行 sudo、修改系统仓库或整机升级。
-
-App 选择顺序：显式 `CHATGPT_APP_DIR` → 仓库内已下载的固定版本 → 系统 `/usr/lib/chatgpt` 或 `/opt/chatgpt` → 询问下载。显式路径错误会报错，避免静默换用其他 App。只自动识别 Linux x86_64 和 aarch64/arm64，ARM64 安装路径尚未在实际硬件验收。
+App 的 `.deb` **仅解包 App 文件**，不执行维护脚本，不注册系统包；不需要 sudo，也不会改变系统 PATH 或 shell 配置。
 
 打开终端输出的登录链接，例如 `http://127.0.0.1:18765/login?token=...`。当前链接也保存在 `.logs/access-url`。
 
@@ -103,7 +96,7 @@ export CHATGPT_WEB_ACCESS_TOKEN='replace-with-a-long-random-secret'
 scripts/start.sh --ozone-platform=headless --disable-gpu
 ```
 
-至少 16 个字符，建议使用 `openssl rand -hex 32` 生成的随机值。可以由进程管理器注入环境变量，避免写入 Git 或共享脚本。固定令牌使登录链接保持不变；Cookie 每次重启仍会轮换，需要重新打开该链接。
+至少 16 个字符，建议使用 `openssl rand -hex 32` 生成的随机值。
 
 **不使用访问令牌**
 
@@ -112,7 +105,7 @@ unset CHATGPT_WEB_ACCESS_TOKEN
 CHATGPT_WEB_AUTH=none scripts/start.sh --ozone-platform=headless --disable-gpu
 ```
 
-直接访问 `http://127.0.0.1:18765/`。此模式允许能访问服务的人操作宿主机 App，仅用于可信本机、私有隧道，或已有独立认证的反向代理。不要将无认证入口直接暴露到公网。即使关闭令牌认证，WebSocket 仍检查页面 Origin。
+直接访问 `http://127.0.0.1:18765/`。此模式允许能访问服务的人操作宿主机 App，仅用于可信本机、私有隧道，或已有独立认证的反向代理。**不要将无认证入口直接暴露到公网**。即使关闭令牌认证，WebSocket 仍检查页面 Origin。
 
 ### 配置项
 
@@ -164,7 +157,7 @@ scripts/start.sh --ozone-platform=headless --disable-gpu
 4. 执行 `sudo nginx -t`，通过后再重新加载 Nginx。
 5. 打开终端输出的 **HTTPS** 登录链接。
 
-模板已包含 WebSocket Upgrade、长连接超时和关闭代理缓冲。该站点关闭 access log，避免记录登录 URL 中的令牌。不要移除 Origin 校验来解决连接问题，应确保 `CHATGPT_WEB_ORIGIN` 与浏览器地址完全一致。
+模板已包含 WebSocket Upgrade、长连接超时和关闭代理缓冲。该站点关闭 access log，避免记录登录 URL 中的令牌。应确保 `CHATGPT_WEB_ORIGIN` 与浏览器地址完全一致。
 
 ## 更新、回滚和数据位置
 
@@ -174,7 +167,9 @@ scripts/start.sh --ozone-platform=headless --disable-gpu
 scripts/start.sh --ozone-platform=headless --disable-gpu
 ```
 
-启动时会检查原 ASAR 与补丁的校验值，仅在缺失或变化时重新生成副本；切换来源时同步更新资源链接。生成脚本与启动脚本共用 Python 文件锁，避免运行中替换 ASAR。原安装包不会被改写；停止副本后直接使用原桌面 App 即可回滚。
+启动时会检查原 ASAR 与补丁的校验值，仅在缺失或变化时重新生成副本；切换来源时同步更新资源链接。
+
+数据位置：
 
 | 路径 | 内容 |
 | --- | --- |
@@ -185,7 +180,7 @@ scripts/start.sh --ozone-platform=headless --disable-gpu
 | `prepare-manifest.json` | 本次源 App 版本、SHA-256 和补丁 SHA-256 |
 | `.logs/prepare-history.jsonl` | 每次生成操作的追加记录 |
 
-以上路径均被 Git 忽略。**独立 Electron profile 不代表隔离 Codex 数据**：App 后端仍访问宿主机的配置、文件及会话。不要从多个 App 实例同时操作同一会话。
+以上路径均被 Git 忽略。
 
 目前仅允许一个浏览器 WebSocket 连接。遇到连接冲突时，关闭其他已连接标签页再重试。
 
@@ -206,8 +201,6 @@ CHATGPT_WEB_AUTH=none npm run test:integration
 原版网页 → electronBridge / MessagePort 适配 → WebSocket
        → 原 Electron 主进程 → 原 renderer / preload → 原 App 服务
 ```
-
-文件夹选择适配只接管已连接 Web UI 的目录选择请求；文件上传、原生菜单、语音等需要单独适配。每次升级应按 [验收清单](docs/VALIDATION.md)检查。
 
 [修改记录](docs/OPERATIONS.md) · [MIT License](LICENSE)
 
