@@ -203,6 +203,8 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 npm run test:integration
 # 附件协议测试，不自动操作网页：
 node scripts/smoke-attachments.cjs
+# PDF Worker 资源检查：
+node --experimental-vm-modules scripts/smoke-pdf.cjs
 # 无令牌模式的集成检查：
 CHATGPT_WEB_AUTH=none npm run test:integration
 ```

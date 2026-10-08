@@ -69,3 +69,10 @@
 - 页面已切换、目录拖入和上传失败会提示错误。普通文字拖拽不被拦截。
 - 文件窗口沿用嵌套弹窗、焦点与 Escape 隔离，避免关闭底层对话框。
 - 根据使用者要求，本轮不做网页自动交互。后端/协议验证通过，手动验收步骤见 VALIDATION.md。
+
+## PDF 预览修复
+
+- 原 PDF.js 使用 `pdf.worker.*.mjs` 模块 Worker。静态服务此前没有 `.mjs` 映射，返回 application/octet-stream，导致浏览器拒绝加载。
+- 为 `.mjs` 返回 text/javascript，同时补齐 `.pdf` 的 application/pdf。继续保留 nosniff 和原 CSP。
+- 新增 `scripts/smoke-pdf.cjs`：直接检查实际 HTTP Worker 响应类型、与原 ASAR 的字节一致性、模块语法及 worker-src CSP。
+- 协议检查通过；按使用者要求不执行网页自动交互，PDF 实际渲染由使用者验收。

@@ -49,3 +49,13 @@
 5. 发送一条包含测试附件的消息，确认模型能读取；刷新后检查会话附件引用。
 
 本轮网页与模型读取效果由使用者验收，未将协议测试作为 UI 全链路通过的证据。
+
+## PDF 预览
+
+服务启动后运行：
+
+```sh
+node --experimental-vm-modules scripts/smoke-pdf.cjs
+```
+
+验证原 PDF Worker 返回 JavaScript MIME、保留 nosniff、内容与原 ASAR 完全一致、模块语法有效且 CSP 允许同源 Worker。此检查不代替实际页面渲染；请手动重新打开 PDF 预览，检查页面内容、翻页和缩放。

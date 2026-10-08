@@ -28,7 +28,7 @@ dialog.showOpenDialog=(...args)=>{
   }
   return nativeOpenDialog(...args);
 };
-const mime = {'.html':'text/html', '.js':'text/javascript', '.css':'text/css', '.svg':'image/svg+xml', '.png':'image/png', '.woff2':'font/woff2', '.json':'application/json', '.wasm':'application/wasm'};
+const mime = {'.html':'text/html', '.js':'text/javascript', '.mjs':'text/javascript', '.pdf':'application/pdf', '.css':'text/css', '.svg':'image/svg+xml', '.png':'image/png', '.woff2':'font/woff2', '.json':'application/json', '.wasm':'application/wasm'};
 const authorized=access.authorized;
 function json(res,status,value){res.writeHead(status,{'content-type':'application/json','cache-control':'no-store'});res.end(JSON.stringify(value));}
 const server = http.createServer((req,res)=>{

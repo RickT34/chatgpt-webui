@@ -206,6 +206,8 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 npm run test:integration
 # Attachment protocol checks (no browser automation):
 node scripts/smoke-attachments.cjs
+# PDF worker resource checks:
+node --experimental-vm-modules scripts/smoke-pdf.cjs
 # Integration checks for token-free mode:
 CHATGPT_WEB_AUTH=none npm run test:integration
 ```
