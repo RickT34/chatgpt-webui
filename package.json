@@ -1,0 +1,19 @@
+{
+  "name": "chatgpt-webui",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Reuse the installed ChatGPT desktop interface in your browser, backed by the original local App.",
+  "scripts": {
+    "prepare:app": "python3 scripts/prepare.py",
+    "start": "sh scripts/start.sh",
+    "test": "node --test tests/*.test.cjs",
+    "test:integration": "node scripts/smoke.cjs"
+  },
+  "dependencies": {
+    "ws": "8.21.0"
+  },
+  "devDependencies": {
+    "capnweb": "0.11.1"
+  },
+  "license": "MIT"
+}

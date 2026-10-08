@@ -1,0 +1,15 @@
+.runtime/
+.profile/
+.logs/
+prepare-manifest.json
+__pycache__/
+
+node_modules/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.agents/
+.codex/
+.aws/

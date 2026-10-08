@@ -1,0 +1,90 @@
+#!/usr/bin/env python3
+"""Create a disposable App copy; never modify the installed package."""
+import hashlib, json, os, pathlib, shutil, struct, datetime, fcntl
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+SOURCE = pathlib.Path(os.environ.get('CHATGPT_APP_DIR', '/usr/lib/chatgpt'))
+RUNTIME = ROOT / '.runtime'
+archive = SOURCE / 'resources/app.asar'
+(ROOT/'.logs').mkdir(exist_ok=True, mode=0o700)
+lock = (ROOT/'.logs/instance.lock').open('a')
+try:
+    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+except BlockingIOError:
+    raise SystemExit('Stop the running Web App before preparing an update.')
+with archive.open('rb') as f:
+    prefix = struct.unpack('<4I', f.read(16))
+    header = json.loads(f.read(prefix[3]))
+    base = 8 + prefix[1]
+    def entry(name):
+        node = header
+        for part in name.split('/'):
+            node = node['files'][part]
+        return node
+    def read(name):
+        node = entry(name)
+        f.seek(base + int(node['offset']))
+        return f.read(node['size'])
+    package = json.loads(read('package.json'))
+    preload = read('.vite/build/preload.js').decode()
+    for marker in ['electronBridge', 'sendMessageFromView', 'connect-app-host']:
+        if marker not in preload:
+            raise SystemExit(f'Unsupported App: missing preload marker {marker}')
+    original_main = package['main']
+    package['main'] = '.vite/build/web-entry.cjs'
+    additions = {
+        'package.json': json.dumps(package, indent=2).encode(),
+        '.vite/build/preload.js': (preload + '''\n;require('electron').contextBridge.exposeInMainWorld('chatgptWebTransport', {
+ send: value => require('electron').ipcRenderer.send('chatgpt-web:from-relay', value),
+ getSnapshot: () => require('electron').ipcRenderer.sendSync('codex_desktop:get-shared-object-snapshot'),
+ subscribe: callback => require('electron').ipcRenderer.on('chatgpt-web:to-relay', (_event, value) => callback(value))
+});\n''').encode(),
+        '.vite/build/web-entry.cjs': f'require("./web-main.cjs");\nrequire("./{pathlib.PurePosixPath(original_main).name}");\n'.encode(),
+    }
+    for name in ['main.cjs', 'access.cjs', 'client.js', 'relay.js', 'codec.js', 'folders.cjs', 'folder-picker.js', 'folder-picker.css']:
+        additions['.vite/build/web-' + name] = (ROOT / 'bridge' / name).read_bytes()
+    payload_size = archive.stat().st_size - base
+    offset = payload_size
+    for name, content in additions.items():
+        node = header
+        parts = name.split('/')
+        for part in parts[:-1]:
+            node = node['files'][part]
+        node['files'][parts[-1]] = {'size': len(content), 'offset': str(offset), 'integrity': {
+            'algorithm': 'SHA256', 'hash': hashlib.sha256(content).hexdigest(), 'blockSize': 4194304,
+            'blocks': [hashlib.sha256(content[i:i+4194304]).hexdigest() for i in range(0, len(content), 4194304)]}}
+        offset += len(content)
+    RUNTIME.mkdir(exist_ok=True)
+    for item in SOURCE.iterdir():
+        dest = RUNTIME / item.name
+        if item.name == 'resources':
+            dest.mkdir(exist_ok=True)
+            for resource in item.iterdir():
+                target = dest / resource.name
+                if resource.name != 'app.asar' and not target.exists():
+                    target.symlink_to(resource)
+        elif item.name == 'ChatGPT':
+            # Electron resolves resources relative to the executable; a symlink is insufficient.
+            if not dest.exists() or dest.stat().st_size != item.stat().st_size or hashlib.sha256(dest.read_bytes()).digest() != hashlib.sha256(item.read_bytes()).digest():
+                shutil.copy2(item, dest)
+        elif not dest.exists():
+            dest.symlink_to(item)
+    raw = json.dumps(header, separators=(',', ':'), ensure_ascii=False).encode()
+    padded = 4 + len(raw)
+    padded += (-padded) % 4
+    out = RUNTIME / 'resources/app.asar.tmp'
+    with out.open('wb') as dst:
+        dst.write(struct.pack('<4I', 4, padded + 4, padded, len(raw)))
+        dst.write(raw)
+        dst.write(b'\0' * (padded - 4 - len(raw)))
+        f.seek(base)
+        shutil.copyfileobj(f, dst)
+        for content in additions.values():
+            dst.write(content)
+    out.replace(RUNTIME / 'resources/app.asar')
+manifest = {'prepared_at': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'source': str(archive),
+    'app_version': package['version'], 'source_sha256': hashlib.file_digest(archive.open('rb'), 'sha256').hexdigest(),
+    'original_main': original_main, 'patch_files': {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted([*(ROOT/'bridge').iterdir(), ROOT/'scripts/prepare.py', ROOT/'scripts/start.sh', ROOT/'package-lock.json']) if p.is_file()}}
+(ROOT/'prepare-manifest.json').write_text(json.dumps(manifest, indent=2)+'\n')
+with (ROOT/'.logs/prepare-history.jsonl').open('a') as log:
+    log.write(json.dumps(manifest)+'\n')
+print(json.dumps(manifest, indent=2))
