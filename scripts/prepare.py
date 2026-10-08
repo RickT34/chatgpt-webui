@@ -6,7 +6,8 @@ SOURCE = pathlib.Path(os.environ.get('CHATGPT_APP_DIR', '/usr/lib/chatgpt'))
 RUNTIME = ROOT / '.runtime'
 archive = SOURCE / 'resources/app.asar'
 (ROOT/'.logs').mkdir(exist_ok=True, mode=0o700)
-lock = (ROOT/'.logs/instance.lock').open('a')
+inherited_lock = os.environ.get('CHATGPT_WEB_LOCK_FD')
+lock = os.fdopen(os.dup(int(inherited_lock)), 'a') if inherited_lock else (ROOT/'.logs/instance.lock').open('a')
 try:
     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
 except BlockingIOError:
@@ -60,12 +61,18 @@ with archive.open('rb') as f:
             dest.mkdir(exist_ok=True)
             for resource in item.iterdir():
                 target = dest / resource.name
-                if resource.name != 'app.asar' and not target.exists():
-                    target.symlink_to(resource)
+                if resource.name != 'app.asar':
+                    if target.is_symlink() and target.resolve() != resource.resolve():
+                        target.unlink()
+                    if not target.exists():
+                        target.symlink_to(resource)
         elif item.name == 'ChatGPT':
             # Electron resolves resources relative to the executable; a symlink is insufficient.
             if not dest.exists() or dest.stat().st_size != item.stat().st_size or hashlib.sha256(dest.read_bytes()).digest() != hashlib.sha256(item.read_bytes()).digest():
                 shutil.copy2(item, dest)
+        elif dest.is_symlink():
+            if dest.resolve() != item.resolve():
+                dest.unlink(); dest.symlink_to(item)
         elif not dest.exists():
             dest.symlink_to(item)
     raw = json.dumps(header, separators=(',', ':'), ensure_ascii=False).encode()
@@ -83,7 +90,7 @@ with archive.open('rb') as f:
     out.replace(RUNTIME / 'resources/app.asar')
 manifest = {'prepared_at': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'source': str(archive),
     'app_version': package['version'], 'source_sha256': hashlib.file_digest(archive.open('rb'), 'sha256').hexdigest(),
-    'original_main': original_main, 'patch_files': {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted([*(ROOT/'bridge').iterdir(), ROOT/'scripts/prepare.py', ROOT/'scripts/start.sh', ROOT/'package-lock.json']) if p.is_file()}}
+    'original_main': original_main, 'patch_files': {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted([*(ROOT/'bridge').iterdir(), ROOT/'scripts/prepare.py', ROOT/'scripts/start.sh', ROOT/'scripts/bootstrap.py', ROOT/'package-lock.json']) if p.is_file()}}
 (ROOT/'prepare-manifest.json').write_text(json.dumps(manifest, indent=2)+'\n')
 with (ROOT/'.logs/prepare-history.jsonl').open('a') as log:
     log.write(json.dumps(manifest)+'\n')

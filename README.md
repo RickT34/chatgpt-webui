@@ -27,10 +27,11 @@
 ## 环境要求
 
 - Linux；当前实测 Arch Linux。
-- 已安装 ChatGPT Desktop，默认目录 `/usr/lib/chatgpt`。
+- ChatGPT Desktop：可复用已安装版本；未安装时会询问并下载到仓库。
 - 当前适配版本：`chatgpt-desktop 26.930.21537-1`。
-- Node.js 22+、npm、Python 3.11+、`flock`（通常由 util-linux 提供）。
-- 约 1 GB 可用空间用于本地 App 副本，另需运行时缓存空间。
+- Node.js 22+/npm 与 Python 3.11+：启动脚本自动检测，缺失时询问并本地安装。无需 `flock`。
+- 首次自动下载建议至少 3 GiB 空间；基本引导工具为 POSIX shell、curl 或 wget、tar、sha256sum，以及 Linux `ldd`。
+- 宿主系统须具备 Electron 所需的 glibc、GTK、NSS 等原生库；启动前会检测缺失项。
 
 这是桌面 App 的浏览器适配层，仍需在宿主机运行 Electron。依赖原 App 私有协议，新版本需要重新测试；暂不承诺其他系统或版本兼容。
 
@@ -39,10 +40,39 @@
 下载本仓库并进入目录：
 
 ```sh
-npm ci --ignore-scripts
-python3 scripts/prepare.py
 scripts/start.sh --ozone-platform=headless --disable-gpu
 ```
+
+首次启动会依次检查 Python、Node/npm、App、原生动态库和项目依赖。需要下载时会显示来源、版本与目标路径，并询问 `Continue [y/N]`；直接回车或输入 `n` 会停止。
+
+```sh
+# 仅检查环境，不下载、不启动
+scripts/start.sh --check
+
+# 完成环境安装和副本准备，但不启动 App
+scripts/start.sh --setup-only
+
+# 明确同意所有仓库内下载，适合无交互环境
+scripts/start.sh --yes --setup-only
+scripts/start.sh --yes --ozone-platform=headless --disable-gpu
+```
+
+非交互环境不会自行默认同意；需提供 `--yes` 或 `CHATGPT_WEB_SETUP_YES=1`。正常启动已满足环境要求后不会重复询问或下载。`--help` 查看入口选项，其他参数原样传递给 Electron。
+
+自动安装范围：
+
+| 组件 | 来源及版本 | 仓库内位置 |
+| --- | --- | --- |
+| ChatGPT Desktop | [官方 Linux 分发源](https://learn.chatgpt.com/docs/linux/linux-app)，固定已适配的 `26.930.21537`，按 x64 / ARM64 选择 `.deb` 并校验固定 SHA-256 | `.deps/chatgpt-<版本>-<架构>/` |
+| Node.js + npm | [nodejs.org](https://nodejs.org/dist/latest-v22.x/)，安装时解析 Node 22 LTS 当前版本，按官方 SHA-256 校验 | `.deps/node/` |
+| Python | [Astral uv](https://docs.astral.sh/uv/guides/install-python/) 获取 Python 3.12 standalone 构建；不是 python.org 发布的 Linux 二进制 | `.deps/python/`、`.deps/uv/` |
+| npm 依赖 | `package-lock.json`，执行 `npm ci --ignore-scripts` | `node_modules/`，缓存 `.deps/cache/` |
+
+App 的 `.deb` **仅解包 App 文件**，不执行维护脚本，不注册系统包；不需要 sudo，也不会改变系统 PATH 或 shell 配置。uv 引导安装会要求 `sha256sum`，防止跳过二进制校验。
+
+原生系统库不能可靠地按发行版混装进项目，因此缺少 glibc/GTK/NSS 等库时会列出具体缺失项并停止，需用宿主发行版的包管理器补齐。没有 curl/wget 等最基础引导工具时也会明确提示；不会自动执行 sudo、修改系统仓库或整机升级。
+
+App 选择顺序：显式 `CHATGPT_APP_DIR` → 仓库内已下载的固定版本 → 系统 `/usr/lib/chatgpt` 或 `/opt/chatgpt` → 询问下载。显式路径错误会报错，避免静默换用其他 App。只自动识别 Linux x86_64 和 aarch64/arm64，ARM64 安装路径尚未在实际硬件验收。
 
 打开终端输出的登录链接，例如 `http://127.0.0.1:18765/login?token=...`。当前链接也保存在 `.logs/access-url`。
 
@@ -88,7 +118,9 @@ CHATGPT_WEB_AUTH=none scripts/start.sh --ozone-platform=headless --disable-gpu
 
 | 环境变量 | 默认值 | 用途 |
 | --- | --- | --- |
-| `CHATGPT_APP_DIR` | `/usr/lib/chatgpt` | **生成副本时**指定已安装 App 路径 |
+| `CHATGPT_APP_DIR` | 自动发现 | 指定已安装或手动解包的 App 目录 |
+| `CHATGPT_WEB_PYTHON` | 系统或本地 Python | 显式指定引导 Python 路径 |
+| `CHATGPT_WEB_SETUP_YES` | `0` | `1` 等同 `--yes`，同意仓库内安装 |
 | `CHATGPT_WEB_PORT` | `18765` | 本机监听端口 |
 | `CHATGPT_WEB_AUTH` | `token` | `token` 或 `none` |
 | `CHATGPT_WEB_ACCESS_TOKEN` | 随机生成 | 自定义访问令牌；不要与 `none` 同时设置 |
@@ -99,7 +131,7 @@ CHATGPT_WEB_AUTH=none scripts/start.sh --ozone-platform=headless --disable-gpu
 更改安装目录或端口的例子：
 
 ```sh
-CHATGPT_APP_DIR=/path/to/chatgpt python3 scripts/prepare.py
+CHATGPT_APP_DIR=/path/to/chatgpt scripts/start.sh --setup-only
 CHATGPT_WEB_PORT=18766 scripts/start.sh --ozone-platform=headless --disable-gpu
 ```
 
@@ -139,15 +171,14 @@ scripts/start.sh --ozone-platform=headless --disable-gpu
 更新 App 后，先停止 Web UI，再执行：
 
 ```sh
-npm ci --ignore-scripts
-python3 scripts/prepare.py
 scripts/start.sh --ozone-platform=headless --disable-gpu
 ```
 
-生成脚本与启动脚本共用锁，避免运行中替换 ASAR。原安装包不会被改写；停止副本后直接使用原桌面 App 即可回滚。
+启动时会检查原 ASAR 与补丁的校验值，仅在缺失或变化时重新生成副本；切换来源时同步更新资源链接。生成脚本与启动脚本共用 Python 文件锁，避免运行中替换 ASAR。原安装包不会被改写；停止副本后直接使用原桌面 App 即可回滚。
 
 | 路径 | 内容 |
 | --- | --- |
+| `.deps/` | 本地工具、App 下载、缓存及安装记录，不入库 |
 | `.runtime/` | 可重新生成的 App 副本及资源链接 |
 | `.profile/` | 独立 Electron 登录、偏好和缓存，升级时保留 |
 | `.logs/access-url` | 当前访问入口，包含令牌时属于凭据 |
@@ -162,6 +193,7 @@ scripts/start.sh --ozone-platform=headless --disable-gpu
 
 ```sh
 npm test
+python3 -m unittest discover -s tests -p 'test_*.py'
 # App 已启动且浏览器连接已关闭时：
 npm run test:integration
 # 无令牌模式的集成检查：

@@ -47,3 +47,14 @@
 5. 原生目录对话框及项目弹窗结构是否变化。
 6. 三种认证模式、Origin 和反代 WebSocket 是否通过测试。
 7. 新截图逐区域审查，不能提交原始截图、个人 profile 或会话记录。
+
+## 自动化启动与仓库内安装
+
+- `start.sh` 先检测可用 Python；缺少时经确认用官方 uv 安装器将 uv/Python 安装到 `.deps`，不修改 shell 配置。
+- `bootstrap.py` 检查 Node/npm、App、动态库和依赖，逐项确认下载；`--yes` 提供明确预授权，`--check` 不下载，`--setup-only` 不启动。
+- 固定 App 26.930.21537 的 amd64/arm64 包和 SHA-256；Node 从官方 Node 22 LTS 清单解析具体版本并校验；不静默切换到新 App 版本。
+- 仅抽取 `.deb` 的 usr/lib/chatgpt 子树，不运行系统安装脚本；安全 tar 过滤防止目录穿越和外部符号链接。
+- 引导脚本使用 fcntl 锁，并把同一个锁 FD 传给 prepare，最后由 App 持有；移除启动对 flock 命令的依赖。
+- 自动识别副本过期并重建；切换系统 App 与本地 App 时刷新资源符号链接。
+- `.deps/install-history.jsonl` 记录新下载的 URL、实际 SHA-256 和是否匹配预期校验；Python 构建路径保留具体版本。
+- 不能安全下载替代的系统图形库和 libc 只列出缺失项并停止，不修改系统。

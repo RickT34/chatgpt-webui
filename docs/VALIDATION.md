@@ -22,3 +22,13 @@
 - 停止服务后可运行 `node scripts/verify-modes.cjs` 重做三种模式测试；使用临时本机端口，结束后停止测试 App。
 - 临时 Nginx + 本地测试证书完成 HTTPS 登录、Secure Cookie、WSS 和真实 App-host RPC 测试。测试仅将临时 CA 提供给 Node 测试进程，未关闭 TLS 校验。
 - Nginx 模板部署时仍需替换自己的域名与有效证书，并运行 `nginx -t`；测试不等于已部署到用户域名。
+
+## 自动引导安装验收
+
+- 8 项 Python 回归测试覆盖架构选择、询问/拒绝/非交互模式、SHA-256 失败、缓存复用、tar 越界、Debian 包选择性解包、无效显式路径和原生库缺失。
+- 使用已有官方 x64 `.deb` 缓存实测固定 SHA-256 校验和仅 App 文件解包；包下载器的实际 HTTPS 路径通过 Node 下载验证，未重复消耗数百 MB 下载同一 App 包。
+- 实际从 nodejs.org 下载 Node 22 LTS、校验并执行成功。
+- 隔离 PATH 去掉系统 Python/Node 后，成功通过官方 uv 安装器下载 uv 与 Python 3.12，再使用仓库内 Node 和 App 完成依赖安装、生成副本与启动；uv 校验路径也已复验。
+- 仓库内运行时启动后，真实 App-host RPC、preload 返回事件和运行锁检查通过。
+- `--check` 在环境完整时成功，在缺失或副本过期时明确退出且不下载。
+- ARM64 只实现架构分派及固定包校验信息，尚未在 ARM 硬件实测。

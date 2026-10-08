@@ -1,9 +1,54 @@
 #!/bin/sh
 set -eu
 cd "$(dirname "$0")/.."
+# Python is the only bootstrap requirement; Node and the App are handled below.
 export CHATGPT_WEB_ROOT="$PWD"
-export CODEX_ELECTRON_USER_DATA_PATH="$PWD/.profile"
-export CHATGPT_WEB_PORT="${CHATGPT_WEB_PORT:-18765}"
-mkdir -p .logs
-chmod 700 .logs
-exec flock -F -n .logs/instance.lock "$PWD/.runtime/ChatGPT" --user-data-dir="$CODEX_ELECTRON_USER_DATA_PATH" "$@"
+yes_mode="${CHATGPT_WEB_SETUP_YES:-0}"
+check_mode=0
+for argument in "$@"; do
+    case "$argument" in
+        --yes) yes_mode=1 ;;
+        --check) check_mode=1 ;;
+        --help) printf '%s\n' 'Usage: scripts/start.sh [--yes] [--check|--setup-only] [Electron options...]' 'Missing downloads require confirmation. --yes explicitly permits local downloads.'; exit 0 ;;
+    esac
+done
+valid_python() {
+    "$1" -c 'import sys,ssl,lzma,fcntl,tarfile; assert sys.version_info >= (3,11) and hasattr(tarfile,"data_filter")' >/dev/null 2>&1
+}
+python_cmd="${CHATGPT_WEB_PYTHON:-python3}"
+if ! valid_python "$python_cmd"; then
+    if [ -n "${CHATGPT_WEB_PYTHON:-}" ]; then
+        printf '%s\n' 'CHATGPT_WEB_PYTHON is not a usable Python 3.11+ interpreter.' >&2; exit 1
+    fi
+    python_cmd="$PWD/.deps/python-bin/python3"
+    if ! valid_python "$python_cmd"; then
+        printf '%s\n' 'Missing Python 3.11+ (SSL, lzma, fcntl and safe tar extraction required).'
+        if [ "$check_mode" = 1 ]; then exit 1; fi
+        printf '%s\n' "Download uv from https://astral.sh and Python 3.12 (Astral python-build-standalone) into $PWD/.deps?"
+        if [ "$yes_mode" != 1 ]; then
+            if [ ! -t 0 ]; then printf '%s\n' 'No interactive terminal. Run interactively or pass --yes.' >&2; exit 1; fi
+            printf 'Continue [y/N]: '; read -r answer
+            case "$answer" in y|Y|yes|YES) ;; *) exit 1 ;; esac
+        fi
+        mkdir -p .deps/downloads .deps/python-bin
+        if [ ! -x .deps/uv/uv ]; then
+            command -v sha256sum >/dev/null 2>&1 || { printf '%s\n' 'Install sha256sum (coreutils) first to verify the uv binary.' >&2; exit 1; }
+            if command -v curl >/dev/null 2>&1; then
+                curl --proto '=https' --tlsv1.2 -fL --retry 2 -o .deps/downloads/uv-install.sh https://astral.sh/uv/install.sh
+            elif command -v wget >/dev/null 2>&1; then
+                wget --https-only -O .deps/downloads/uv-install.sh https://astral.sh/uv/install.sh
+            else
+                printf '%s\n' 'Install curl or wget first; neither is available to bootstrap downloads.' >&2; exit 1
+            fi
+            UV_UNMANAGED_INSTALL="$PWD/.deps/uv" sh .deps/downloads/uv-install.sh
+        fi
+        export UV_CACHE_DIR="$PWD/.deps/cache/uv"
+        export UV_PYTHON_INSTALL_DIR="$PWD/.deps/python"
+        .deps/uv/uv python install 3.12 --no-bin
+        python_found=$(.deps/uv/uv python find --managed-python 3.12)
+        ln -sfn "$python_found" "$python_cmd"
+        { .deps/uv/uv --version; "$python_cmd" --version; } > .deps/python-install.txt
+        valid_python "$python_cmd" || { printf '%s\n' 'Downloaded Python cannot run on this host.' >&2; exit 1; }
+    fi
+fi
+exec "$python_cmd" scripts/bootstrap.py "$@"
