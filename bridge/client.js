@@ -15,10 +15,12 @@ window.chatgptWebReady=(async()=>{
   const send=value=>ws.send(window.chatgptWebCodec.pack(value));
   const call=(method,...args)=>new Promise((resolve,reject)=>{
     const id=nextId++;
-    const timer=setTimeout(()=>{pending.delete(id);reject(Error(`Bridge timeout: ${method}`));},60000);
+    const interactivePicker=method==='sendMessageFromView' && args[0]?.type==='fetch' && /^vscode:\/\/codex\/pick-files?$/.test(args[0]?.url||'');
+    const timer=interactivePicker?null:setTimeout(()=>{pending.delete(id);reject(Error(`Bridge timeout: ${method}`));},60000);
     pending.set(id,{resolve,reject,timer});send({kind:'call',method,args,id});
   });
   const folderPicker=window.chatgptWebFolderPicker(call);
+  const attachments=window.chatgptWebAttachments(call);
   window.codexWindowType='electron';
   window.electronBridge={
     windowType:'electron',getPreloadStartedAtMs:()=>performance.timeOrigin,
@@ -33,7 +35,7 @@ window.chatgptWebReady=(async()=>{
     getSharedObjectSnapshotValue:key=>shared[key],
     getSystemThemeVariant:()=>bootstrap.getSystemThemeVariant,
     subscribeToSystemThemeVariant:cb=>{themeSubscribers.add(cb);return()=>themeSubscribers.delete(cb);},
-    getPathForFile:()=>null,startFileDrag:()=>false,startLinkDrag:()=>{},
+    getPathForFile:file=>attachments.getPathForFile(file),startFileDrag:()=>false,startLinkDrag:()=>{},
     showContextMenu:(...args)=>call('showContextMenu',...args),
     getFastModeRolloutMetrics:(...args)=>call('getFastModeRolloutMetrics',...args),
     triggerSentryTestError:async()=>{},
@@ -47,6 +49,7 @@ window.chatgptWebReady=(async()=>{
   });
   ws.onmessage=event=>{
     const m=window.chatgptWebCodec.unpack(event.data);
+    if(m.kind==='file-open'){attachments.open(m.value);return;}
     if(m.kind==='folder-open'){folderPicker.open(m.value);return;}
     if(m.kind==='result'){
       const p=pending.get(m.id);if(!p)return;pending.delete(m.id);clearTimeout(p.timer);
@@ -60,7 +63,7 @@ window.chatgptWebReady=(async()=>{
     }
   };
   ws.onclose=()=>{
-    folderPicker.close();
+    folderPicker.close();attachments.close();
     for(const p of pending.values()){clearTimeout(p.timer);p.reject(Error('App bridge disconnected'));}pending.clear();
     const banner=document.createElement('div');banner.textContent='App 连接已断开，请刷新页面重新连接。';
     banner.style.cssText='position:fixed;top:0;left:0;right:0;z-index:2147483647;padding:12px;background:#822;color:white;text-align:center';document.body.append(banner);

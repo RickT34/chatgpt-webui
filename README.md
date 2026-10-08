@@ -23,6 +23,19 @@
 - 支持 SSH 转发或 Nginx HTTPS / WebSocket 反向代理。
 - 用脚本生成可撤销的 App 副本，保留源版本及补丁校验记录，方便升级后重新应用。
 
+## 对话附件：客户端或宿主机
+
+在对话中使用原来的“添加文件”入口，会出现两种来源：
+
+- **客户端文件**：选择浏览器所在设备上的文件，上传到宿主机后交给原 App 添加附件。
+- **宿主机文件**：浏览运行 App 的机器，选择一个或多个文件，直接使用宿主机路径，不经过浏览器复制文件内容。
+
+也可以把客户端文件拖入原对话输入框。适配层会先上传文件、补全宿主机路径，再交由原 App 的拖放流程处理。暂不支持拖入客户端文件夹；原选择器的文件类型限制仍然生效。
+
+客户端上传限制为**单文件 32 MiB**，与 Nginx 模板一致。文件保存在 `.uploads/` 下的独立目录，该目录不入 Git。取消或失败的上传会清理；已交给 App 的文件保留，避免历史对话引用失效。从原 UI 移除附件不会自动删除落盘文件，确认会话不再使用后再手动清理。
+
+新增附件协议测试与拖放处理单元测试已通过。网页实际交互留待手动验收；协议测试不发送模型请求。
+
 ## 环境要求
 
 - Linux；当前实测 Arch Linux。
@@ -171,6 +184,7 @@ scripts/start.sh --ozone-platform=headless --disable-gpu
 | --- | --- |
 | `.deps/` | 本地工具、App 下载、缓存及安装记录，不入库 |
 | `.runtime/` | 可重新生成的 App 副本及资源链接 |
+| `.uploads/` | 已交给 App 的客户端附件，仍被会话引用时应保留 |
 | `.profile/` | 独立 Electron 登录、偏好和缓存，升级时保留 |
 | `.logs/access-url` | 当前访问入口，包含令牌时属于凭据 |
 | `prepare-manifest.json` | 本次源 App 版本、SHA-256 和补丁 SHA-256 |
@@ -187,6 +201,8 @@ npm test
 python3 -m unittest discover -s tests -p 'test_*.py'
 # App 已启动且浏览器连接已关闭时：
 npm run test:integration
+# 附件协议测试，不自动操作网页：
+node scripts/smoke-attachments.cjs
 # 无令牌模式的集成检查：
 CHATGPT_WEB_AUTH=none npm run test:integration
 ```

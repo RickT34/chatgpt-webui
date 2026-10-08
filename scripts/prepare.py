@@ -41,7 +41,7 @@ with archive.open('rb') as f:
 });\n''').encode(),
         '.vite/build/web-entry.cjs': f'require("./web-main.cjs");\nrequire("./{pathlib.PurePosixPath(original_main).name}");\n'.encode(),
     }
-    for name in ['main.cjs', 'access.cjs', 'client.js', 'relay.js', 'codec.js', 'folders.cjs', 'folder-picker.js', 'folder-picker.css']:
+    for name in ['main.cjs', 'access.cjs', 'client.js', 'relay.js', 'codec.js', 'folders.cjs', 'uploads.cjs', 'attachments.js', 'folder-picker.js', 'folder-picker.css']:
         additions['.vite/build/web-' + name] = (ROOT / 'bridge' / name).read_bytes()
     payload_size = archive.stat().st_size - base
     offset = payload_size

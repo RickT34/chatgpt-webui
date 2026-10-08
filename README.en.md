@@ -22,6 +22,19 @@ This project reuses the installed app's HTML, JavaScript, CSS, and backend, adap
 - Access the app through SSH forwarding or an Nginx HTTPS / WebSocket reverse proxy.
 - Generate a disposable app copy with source-version and patch-checksum records, making it easier to reapply changes after upgrades.
 
+## Attachments: client or host files
+
+Use the original **Add files** action in a conversation. The adapter offers two sources:
+
+- **Client files**: choose files from the device running your browser. Files are uploaded to the host before being handed to the original attachment flow.
+- **Host files**: browse the filesystem of the machine running the App, select one or more files, and add them without copying their contents through the browser.
+
+You can also drop client files onto the original conversation input. The adapter uploads them, supplies host paths, and replays the drop for the original App. Client folder drops are not supported. File type restrictions from the original picker still apply.
+
+Client uploads are limited to **32 MiB per file** (matching the Nginx template). Uploaded files use isolated directories under `.uploads/`, which is ignored by Git. Canceled and failed uploads are removed; files handed to the App are retained so conversation references remain valid. Removing an attachment in the original UI does not automatically delete its staged file. Clean retained files manually only when no conversation needs them.
+
+HTTP/WebSocket attachment tests and drop-handler unit tests pass. Browser interactions for these new flows are awaiting manual acceptance; no model request is sent by the protocol tests.
+
 ## Requirements
 
 - Linux; currently tested on Arch Linux.
@@ -174,6 +187,7 @@ Data locations:
 | --- | --- |
 | `.deps/` | Local tools, app downloads, caches, and installation records; excluded from Git |
 | `.runtime/` | Regenerable app copy and resource links |
+| `.uploads/` | Client files handed to the App; retain while conversations reference them |
 | `.profile/` | Separate Electron sign-in state, preferences, and cache; retain during upgrades |
 | `.logs/access-url` | Current access URL; treat it as a credential when it contains a token |
 | `prepare-manifest.json` | Source app version, SHA-256, and patch SHA-256 values for the current copy |
@@ -190,6 +204,8 @@ npm test
 python3 -m unittest discover -s tests -p 'test_*.py'
 # With the app running and the browser connection closed:
 npm run test:integration
+# Attachment protocol checks (no browser automation):
+node scripts/smoke-attachments.cjs
 # Integration checks for token-free mode:
 CHATGPT_WEB_AUTH=none npm run test:integration
 ```
