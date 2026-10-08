@@ -76,3 +76,11 @@
 - 为 `.mjs` 返回 text/javascript，同时补齐 `.pdf` 的 application/pdf。继续保留 nosniff 和原 CSP。
 - 新增 `scripts/smoke-pdf.cjs`：直接检查实际 HTTP Worker 响应类型、与原 ASAR 的字节一致性、模块语法及 worker-src CSP。
 - 协议检查通过；按使用者要求不执行网页自动交互，PDF 实际渲染由使用者验收。
+
+## 自动依赖下载代理修复
+
+- 在 Python/uv 引导之前加载 `scripts/proxy.sh`，规范代理变量的大小写、ALL_PROXY 回退和 NO_PROXY，并传递给 npm。
+- 优先使用显式 CHATGPT_WEB_PROXY，其次环境变量，再读取 KDE/GNOME 手动代理；空值可禁用自动发现。配置内容按数据读取，不执行桌面配置文件。
+- 大文件下载优先使用 curl，代理凭据通过环境传递；保留 HTTPS、重定向协议限制和 SHA-256 校验。没有 curl 时显式构造 urllib HTTP 代理，SOCKS/HTTPS 代理提示安装 curl。
+- 不在来源提示中输出代理地址或认证信息，不写入 npmrc 或系统配置。
+- 不执行 PAC；GNOME 代理认证凭据需通过显式环境变量提供。

@@ -62,10 +62,28 @@ def download(url, target, digest=None):
     part = target.with_suffix(target.suffix + '.part')
     try:
         print(f'Downloading {url}', flush=True)
-        with urllib.request.urlopen(url, timeout=60) as response, part.open('wb') as output:
-            if not response.url.startswith('https://'):
-                raise RuntimeError('Refusing an insecure redirect')
-            shutil.copyfileobj(response, output)
+        curl = shutil.which('curl')
+        if curl:
+            # curl supports system CA settings and HTTP(S)/SOCKS proxy environments.
+            # Keep proxy credentials in the environment, never in process arguments.
+            result = subprocess.run([curl, '--proto', '=https', '--proto-redir', '=https',
+                                     '--fail', '--location', '--silent', '--show-error',
+                                     '--retry', '2', '--connect-timeout', '30', '--max-time', '600',
+                                     '--output', str(part), '--url', url], capture_output=True)
+            if result.returncode:
+                raise RuntimeError(f'Download failed (curl exit {result.returncode}). Check the proxy address, NO_PROXY and CA trust settings.')
+        else:
+            proxies = urllib.request.getproxies()
+            proxy = proxies.get('https') or proxies.get('all') or proxies.get('http')
+            if proxy and not proxy.startswith('http://'):
+                raise RuntimeError('Install curl for SOCKS/HTTPS proxy downloads, or use an HTTP proxy endpoint.')
+            if proxy:
+                proxies['https'] = proxy
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler(proxies))
+            with opener.open(url, timeout=60) as response, part.open('wb') as output:
+                if not response.url.startswith('https://'):
+                    raise RuntimeError('Refusing an insecure redirect')
+                shutil.copyfileobj(response, output)
         if digest and sha256(part) != digest:
             raise RuntimeError(f'SHA-256 mismatch: {target.name}')
         part.replace(target)

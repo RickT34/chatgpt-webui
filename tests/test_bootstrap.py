@@ -46,7 +46,8 @@ class BootstrapTests(unittest.TestCase):
                 opener.assert_not_called()
             response = io.BytesIO(b'corrupted')
             response.url = 'https://example.com/archive'
-            with patch('urllib.request.urlopen', return_value=response):
+            with patch('shutil.which', return_value=None), patch('urllib.request.build_opener') as factory:
+                factory.return_value.open.return_value = response
                 with self.assertRaisesRegex(RuntimeError, 'SHA-256'):
                     bootstrap.download('https://example.com/archive', target, '0' * 64)
             self.assertEqual(target.read_bytes(), b'known')

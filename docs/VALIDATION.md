@@ -59,3 +59,9 @@ node --experimental-vm-modules scripts/smoke-pdf.cjs
 ```
 
 验证原 PDF Worker 返回 JavaScript MIME、保留 nosniff、内容与原 ASAR 完全一致、模块语法有效且 CSP 允许同源 Worker。此检查不代替实际页面渲染；请手动重新打开 PDF 预览，检查页面内容、翻页和缩放。
+
+## 下载代理
+
+- Python 回归测试覆盖大小写优先级、ALL_PROXY、NO_PROXY、显式覆盖/禁用、日志凭据隐藏，以及 KDE/GNOME 手动代理读取。
+- `python scripts/smoke-proxy.py` 启动回环 HTTPS 服务和 CONNECT 代理，检查真实下载器、npm ping、uv dry-run 下载及 NO_PROXY 绕过。
+- 临时证书只供测试进程信任，不关闭 TLS 验证、不访问外部站点、不实际安装测试 wheel。

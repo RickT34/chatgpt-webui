@@ -90,6 +90,31 @@ scripts/start.sh
 
 登录后停止窗口版本，再按需启动 headless 版本。
 
+### 下载代理
+
+启动脚本会统一为 curl、Python 下载器、uv 和 npm 传递代理配置，优先级为：
+
+1. `CHATGPT_WEB_PROXY` 显式指定。
+2. 已导出的 `http_proxy` / `https_proxy` / `all_proxy`（也接受大写；同名时小写优先）。
+3. 没有上述配置时，读取 KDE 或 GNOME 的**手动代理**设置。
+
+`ALL_PROXY` 会补齐下载工具需要的 HTTP/HTTPS 变量；`NO_PROXY` / `no_proxy` 保留并同步给 npm。大文件优先由 curl 下载，支持 HTTP(S) 和 SOCKS 代理；没有 curl 时的 Python 回退只支持 HTTP 代理。不同工具对 SOCKS 的支持可能受其版本影响，使用代理软件的 HTTP/mixed 端口兼容性最好。
+
+```sh
+# 明确指定本机代理软件的 HTTP/mixed 端口
+CHATGPT_WEB_PROXY=http://127.0.0.1:7890 scripts/start.sh --setup-only
+
+# 继承常规系统代理环境变量
+export HTTPS_PROXY=http://127.0.0.1:7890
+export NO_PROXY=localhost,127.0.0.1,::1
+scripts/start.sh --setup-only
+
+# 本次禁用代理，包括桌面自动发现
+CHATGPT_WEB_PROXY= scripts/start.sh --setup-only
+```
+
+不执行 PAC 脚本，也不读取仅存在于浏览器扩展中的代理；此类情况请显式提供代理地址。GNOME 手动代理自动发现不读取认证密码，需要认证时可用带凭据的 `CHATGPT_WEB_PROXY` 环境变量。脚本的代理来源提示不输出地址或凭据，配置不会写入仓库。仅设置 shell 别名而未 export 的变量不能被子进程继承。
+
 ### 三种访问令牌模式
 
 **默认：每次启动生成随机令牌**
@@ -123,6 +148,7 @@ CHATGPT_WEB_AUTH=none scripts/start.sh --ozone-platform=headless --disable-gpu
 | 环境变量 | 默认值 | 用途 |
 | --- | --- | --- |
 | `CHATGPT_APP_DIR` | 自动发现 | 指定已安装或手动解包的 App 目录 |
+| `CHATGPT_WEB_PROXY` | 环境/桌面手动代理 | 统一下载代理；空值禁用代理 |
 | `CHATGPT_WEB_PYTHON` | 系统或本地 Python | 显式指定引导 Python 路径 |
 | `CHATGPT_WEB_SETUP_YES` | `0` | `1` 等同 `--yes`，同意仓库内安装 |
 | `CHATGPT_WEB_PORT` | `18765` | 本机监听端口 |

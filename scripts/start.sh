@@ -12,6 +12,7 @@ for argument in "$@"; do
         --help) printf '%s\n' 'Usage: scripts/start.sh [--yes] [--check|--setup-only] [Electron options...]' 'Missing downloads require confirmation. --yes explicitly permits local downloads.'; exit 0 ;;
     esac
 done
+. ./scripts/proxy.sh
 valid_python() {
     "$1" -c 'import sys,ssl,lzma,fcntl,tarfile; assert sys.version_info >= (3,11) and hasattr(tarfile,"data_filter")' >/dev/null 2>&1
 }

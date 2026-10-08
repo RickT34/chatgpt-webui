@@ -89,6 +89,31 @@ scripts/start.sh
 
 After signing in, stop the windowed instance and start the headless version if desired. Sign-in behavior may vary between app versions.
 
+### Download proxies
+
+The launcher shares proxy settings across curl, the Python downloader, uv, and npm, in this order:
+
+1. An explicit `CHATGPT_WEB_PROXY` value.
+2. Exported `http_proxy` / `https_proxy` / `all_proxy` variables (uppercase is also accepted; lowercase takes precedence).
+3. KDE or GNOME **manual proxy** settings when no proxy environment is configured.
+
+`ALL_PROXY` fills in the HTTP/HTTPS variables needed by the download tools. `NO_PROXY` / `no_proxy` is preserved and passed to npm. Large downloads prefer curl, which supports HTTP(S) and SOCKS proxies; without curl, the Python fallback supports HTTP proxies only. SOCKS support in other tools may depend on their versions; a proxy application's HTTP/mixed port offers the best compatibility.
+
+```sh
+# Explicitly select your local proxy application's HTTP/mixed port
+CHATGPT_WEB_PROXY=http://127.0.0.1:7890 scripts/start.sh --setup-only
+
+# Inherit standard system proxy environment variables
+export HTTPS_PROXY=http://127.0.0.1:7890
+export NO_PROXY=localhost,127.0.0.1,::1
+scripts/start.sh --setup-only
+
+# Disable proxies for this run, including desktop discovery
+CHATGPT_WEB_PROXY= scripts/start.sh --setup-only
+```
+
+PAC scripts and browser-extension-only proxies are not evaluated; specify the proxy address explicitly in those cases. GNOME manual proxy discovery does not read authentication passwords; use an authenticated `CHATGPT_WEB_PROXY` environment value if needed. The launcher's proxy-source message does not print addresses or credentials, and no proxy configuration is written into the repository. Shell aliases or variables that have not been exported are not inherited by child processes.
+
 ### Three access-token modes
 
 The access token controls access to this Web UI only. **It is not an OpenAI API key and does not replace signing in to the app.**
@@ -124,6 +149,7 @@ Open `http://127.0.0.1:18765/` directly. Anyone who can reach the service can op
 | Environment variable | Default | Purpose |
 | --- | --- | --- |
 | `CHATGPT_APP_DIR` | Auto-detected | Directory containing an installed or manually extracted app |
+| `CHATGPT_WEB_PROXY` | Environment / desktop manual proxy | Shared download proxy; an empty value disables proxies |
 | `CHATGPT_WEB_PYTHON` | System or local Python | Explicit path to the bootstrap Python interpreter |
 | `CHATGPT_WEB_SETUP_YES` | `0` | Set to `1` to approve repository-local installation, equivalent to `--yes` |
 | `CHATGPT_WEB_PORT` | `18765` | Local listening port |

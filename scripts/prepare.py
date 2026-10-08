@@ -90,7 +90,7 @@ with archive.open('rb') as f:
     out.replace(RUNTIME / 'resources/app.asar')
 manifest = {'prepared_at': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'source': str(archive),
     'app_version': package['version'], 'source_sha256': hashlib.file_digest(archive.open('rb'), 'sha256').hexdigest(),
-    'original_main': original_main, 'patch_files': {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted([*(ROOT/'bridge').iterdir(), ROOT/'scripts/prepare.py', ROOT/'scripts/start.sh', ROOT/'scripts/bootstrap.py', ROOT/'package-lock.json']) if p.is_file()}}
+    'original_main': original_main, 'patch_files': {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted([*(ROOT/'bridge').iterdir(), ROOT/'scripts/prepare.py', ROOT/'scripts/start.sh', ROOT/'scripts/bootstrap.py', ROOT/'scripts/proxy.sh', ROOT/'package-lock.json']) if p.is_file()}}
 (ROOT/'prepare-manifest.json').write_text(json.dumps(manifest, indent=2)+'\n')
 with (ROOT/'.logs/prepare-history.jsonl').open('a') as log:
     log.write(json.dumps(manifest)+'\n')
