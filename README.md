@@ -43,7 +43,7 @@ scripts/start.sh --ozone-platform=headless --disable-gpu
 首次启动会依次检查 Python、Node/npm、App、原生动态库和项目依赖。需要下载时会显示来源、版本与目标路径，并询问 `Continue [y/N]`；直接回车或输入 `n` 会停止。
 
 ```sh
-# 仅检查环境，不下载、不启动
+# 仅检查环境
 scripts/start.sh --check
 
 # 完成环境安装和副本准备，但不启动 App
@@ -54,18 +54,18 @@ scripts/start.sh --yes --setup-only
 scripts/start.sh --yes --ozone-platform=headless --disable-gpu
 ```
 
-非交互环境不会自行默认同意；需提供 `--yes` 或 `CHATGPT_WEB_SETUP_YES=1`。正常启动已满足环境要求后不会重复询问或下载。`--help` 查看入口选项，其他参数原样传递给 Electron。
+`--help` 查看入口选项，其他参数原样传递给 Electron。
 
 自动安装范围：
 
 | 组件 | 来源及版本 | 仓库内位置 |
 | --- | --- | --- |
-| ChatGPT Desktop | [官方 Linux 分发源](https://learn.chatgpt.com/docs/linux/linux-app)，固定已适配的 `26.930.21537`，按 x64 / ARM64 选择 `.deb` 并校验固定 SHA-256 | `.deps/chatgpt-<版本>-<架构>/` |
-| Node.js + npm | [nodejs.org](https://nodejs.org/dist/latest-v22.x/)，安装时解析 Node 22 LTS 当前版本，按官方 SHA-256 校验 | `.deps/node/` |
-| Python | [Astral uv](https://docs.astral.sh/uv/guides/install-python/) 获取 Python 3.12 standalone 构建；不是 python.org 发布的 Linux 二进制 | `.deps/python/`、`.deps/uv/` |
+| ChatGPT Desktop | [官方 Linux 分发源](https://learn.chatgpt.com/docs/linux/linux-app)，固定已适配的 `26.930.21537`，按 x64 / ARM64 选择| `.deps/chatgpt-<版本>-<架构>/` |
+| Node.js + npm | [nodejs.org](https://nodejs.org/dist/latest-v22.x/)，安装时解析 Node 22 LTS 当前版本| `.deps/node/` |
+| Python | [Astral uv](https://docs.astral.sh/uv/guides/install-python/) 获取 Python 3.12 standalone 构建| `.deps/python/`、`.deps/uv/` |
 | npm 依赖 | `package-lock.json`，执行 `npm ci --ignore-scripts` | `node_modules/`，缓存 `.deps/cache/` |
 
-App 的 `.deb` **仅解包 App 文件**，不执行维护脚本，不注册系统包；不需要 sudo，也不会改变系统 PATH 或 shell 配置。
+App 的 `.deb` **仅解包 App 文件，不需要 sudo**。
 
 打开终端输出的登录链接，例如 `http://127.0.0.1:18765/login?token=...`。当前链接也保存在 `.logs/access-url`。
 
@@ -75,11 +75,9 @@ App 的 `.deb` **仅解包 App 文件**，不执行维护脚本，不注册系�
 scripts/start.sh
 ```
 
-登录后停止窗口版本，再按需启动 headless 版本。不同 App 版本的登录行为可能不同。
+登录后停止窗口版本，再按需启动 headless 版本。
 
 ### 三种访问令牌模式
-
-访问令牌只控制本 Web UI 的访问，**不是 OpenAI API Key，也不能代替 App 账号登录**。
 
 **默认：每次启动生成随机令牌**
 
@@ -105,7 +103,7 @@ unset CHATGPT_WEB_ACCESS_TOKEN
 CHATGPT_WEB_AUTH=none scripts/start.sh --ozone-platform=headless --disable-gpu
 ```
 
-直接访问 `http://127.0.0.1:18765/`。此模式允许能访问服务的人操作宿主机 App，仅用于可信本机、私有隧道，或已有独立认证的反向代理。**不要将无认证入口直接暴露到公网**。即使关闭令牌认证，WebSocket 仍检查页面 Origin。
+直接访问 `http://127.0.0.1:18765/`。此模式允许能访问服务的人操作宿主机 App，仅用于可信本机、私有隧道，或已有独立认证的反向代理。**不要将无认证入口直接暴露到公网**。
 
 ### 配置项
 
@@ -118,8 +116,6 @@ CHATGPT_WEB_AUTH=none scripts/start.sh --ozone-platform=headless --disable-gpu
 | `CHATGPT_WEB_AUTH` | `token` | `token` 或 `none` |
 | `CHATGPT_WEB_ACCESS_TOKEN` | 随机生成 | 自定义访问令牌；不要与 `none` 同时设置 |
 | `CHATGPT_WEB_ORIGIN` | `http://127.0.0.1:<端口>` | 浏览器实际访问的完整源，如 `https://chatgpt.example.com` |
-
-`CHATGPT_WEB_ORIGIN` 只接受协议、域名和可选端口，不支持路径前缀。它同时控制登录链接、WebSocket Origin 校验、CSP 和 HTTPS Cookie 的 Secure 属性。
 
 更改安装目录或端口的例子：
 
@@ -157,7 +153,7 @@ scripts/start.sh --ozone-platform=headless --disable-gpu
 4. 执行 `sudo nginx -t`，通过后再重新加载 Nginx。
 5. 打开终端输出的 **HTTPS** 登录链接。
 
-模板已包含 WebSocket Upgrade、长连接超时和关闭代理缓冲。该站点关闭 access log，避免记录登录 URL 中的令牌。应确保 `CHATGPT_WEB_ORIGIN` 与浏览器地址完全一致。
+应确保 `CHATGPT_WEB_ORIGIN` 与浏览器地址完全一致。
 
 ## 更新、回滚和数据位置
 
