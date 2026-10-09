@@ -105,3 +105,7 @@ node --experimental-vm-modules scripts/smoke-pdf.cjs
 - 原 capnweb 回调/剪贴板回归测试增加 adapter.ready()，确认 services 与 startup.whenReady 经过真实 MessagePort RPC 完成。
 - Node 语法检查和 Python unittest 13 项通过。未测试 Docker、未进行网页自动交互，未重启正在运行的用户服务。
 - 手动验收：低速网络下观察阶段变化；关闭网络后确认失败提示；恢复网络点击重新加载；登录失效重新打开访问链接；宿主重启后确认旧页面提示重试。还需检查正常登录页/聊天页出现后提示层消失。
+
+### App 服务握手监测修正
+
+此前的 adapter.ready() 测试仅使用立即返回的 startup.whenReady，未覆盖原生窗口长期未就绪。本次改为永不完成的原生就绪方法，断言监测器不调用它、不会提前读取 services，且原前端取得 services 后观察 Promise 正常完成。29 项本机测试通过；这不等于已验证用户现场恢复。

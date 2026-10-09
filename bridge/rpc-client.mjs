@@ -10,11 +10,17 @@ export function adaptAppHost(uiPort,clipboard){
  }
  class View extends RpcTarget {get services(){return ui.services;}}
  const host=newMessagePortRpcSession(network.port1,new View());
- let services,upstream;
- const getServices=()=>upstream??=Promise.resolve(host.services);
+ let services,resolveReady,rejectReady;
+ const ready=new Promise((resolve,reject)=>{resolveReady=resolve;rejectReady=reject;});
+ // Observe the UI's existing request. Do not initiate another services request or
+ // call startup.whenReady(), which belongs to the original frontend lifecycle.
+ ready.catch(()=>{});
  class Host extends RpcTarget {
-  get services(){return services??=new RpcStub(async()=>({...await getServices(),clipboard:new Clipboard()}))();}
+  get services(){return services??=new RpcStub(async()=>{
+   try{const value=await host.services;resolveReady();return {...value,clipboard:new Clipboard()};}
+   catch(error){rejectReady(error);throw error;}
+  })();}
  }
  ui=newMessagePortRpcSession(uiPort,new Host());
- return {port:network.port2,async ready(){const value=await getServices();if(value.startup)await value.startup.whenReady();},close(){ui[Symbol.dispose]();host[Symbol.dispose]();network.port1.close();network.port2.close();uiPort.close();}};
+ return {port:network.port2,ready(){return ready;},close(){rejectReady(Error('App service connection closed'));ui[Symbol.dispose]();host[Symbol.dispose]();network.port1.close();network.port2.close();uiPort.close();}};
 }
