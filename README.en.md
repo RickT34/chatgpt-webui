@@ -31,6 +31,8 @@ This project reuses the installed app's HTML, JavaScript, CSS, and backend, adap
 
 Static pages, scripts, and styles support Brotli/gzip compression. The browser keeps a private cache and validates it with ETags on each visit; unchanged resources return `304` without retransmitting their contents. Changes from adapter or App updates trigger a fresh download. Login, session APIs, uploads, staged downloads, and host files are not cached. Compression runs asynchronously on the first request, with results cached in process memory (up to 64 MiB) and regenerated after a restart. No additional Nginx compression setup is needed.
 
+Startup shows resource download, host connection, App service handshake, and interface initialization stages. Request, connection, or initialization timeouts show an error and a reload button; expired authentication prompts you to reopen the login URL. The server checks connection heartbeats every 15 seconds and releases connections with no pong for 45 seconds. The page also prompts for a retry after 60 seconds without a message. Host renderer reloads or crashes clear readiness; reload the page to establish a new session. Operations are not automatically replayed.
+
 ## Requirements
 
 - Linux.

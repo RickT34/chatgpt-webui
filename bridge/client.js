@@ -1,15 +1,19 @@
 'use strict';
 window.chatgptWebReady=(async()=>{
-  let bootstrap;
-  for(let attempt=0;attempt<60;attempt++){
-    const response=await fetch('/bridge/bootstrap');
-    if(response.ok){bootstrap=window.chatgptWebCodec.decode(await response.json());break;}
-    await new Promise(resolve=>setTimeout(resolve,1000));
-  }
-  if(!bootstrap)throw Error('App renderer did not become ready within 60 seconds');
+  const startup=window.chatgptWebStartup;
+  startup.stage('等待宿主 App',65000);
+  const bootstrap=window.chatgptWebCodec.decode(await startup.bootstrap(fetch));
+  if(startup.failed)throw Error('启动已中止，请重试。');
+  startup.stage('连接宿主机',20000);
   const ws=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/bridge/socket`);
-  await new Promise((resolve,reject)=>{ws.onopen=resolve;ws.onerror=reject;});
-  const {adaptAppHost}=await import('/bridge/rpc-client.mjs');
+  const queued=[];ws.onmessage=event=>queued.push(event);
+  ws.addEventListener('close',()=>startup.fail(Error('连接已断开，请重新加载；宿主 App 可能已重启。')));
+  window.addEventListener('chatgpt-web:failed',()=>ws.close(1000,'Client startup failed'),{once:true});
+  window.addEventListener('pagehide',()=>ws.close(1000,'Page left'),{once:true});
+  await startup.connect(ws);
+  startup.stage('下载桥接模块');
+  const {adaptAppHost}=await startup.wait(import('/bridge/rpc-client.mjs'),120000,'桥接模块下载超时。');
+  if(startup.failed)throw Error('启动已中止，请重试。');
   const adaptedPorts=new Map();
   let nextId=1;
   const pending=new Map(), ports=new Map(), workers=new Map(), themeSubscribers=new Set();
@@ -50,9 +54,15 @@ window.chatgptWebReady=(async()=>{
     adaptedPorts.set(id,adapted);
     ports.set(id,port);port.onmessage=e=>send({kind:'port',id,value:e.data});
     send({kind:'port-open',id});
+    startup.stage('等待 App 服务',65000);
+    startup.wait(adapted.ready(),60000,'App 服务握手超时，请检查宿主 App 后重试。').then(()=>startup.hostReady(),error=>startup.fail(error));
   });
+  let lastMessage=Date.now();
+  const liveness=setInterval(()=>{if(Date.now()-lastMessage>60000)startup.fail(Error('长时间未收到宿主机响应，请检查网络后重新加载。'));},15000);
   ws.onmessage=event=>{
+    lastMessage=Date.now();
     const m=window.chatgptWebResources.rewrite(window.chatgptWebCodec.unpack(event.data));
+    if(m.kind==='heartbeat')return;
     if(m.kind==='save-open'){native.save(m.value);return;}
     if(m.kind==='download-ready'){native.ready(m.value);return;}
     if(m.kind==='file-open'){attachments.open(m.value);return;}
@@ -68,19 +78,14 @@ window.chatgptWebReady=(async()=>{
       window.dispatchEvent(new MessageEvent('message',{data:m.value}));
     }
   };
+  for(const event of queued)ws.onmessage(event);
+  queued.length=0;
   ws.onclose=()=>{
+    clearInterval(liveness);
     folderPicker.close();attachments.close();native.close();
     for(const adapted of adaptedPorts.values())adapted.close();adaptedPorts.clear();
     for(const p of pending.values()){clearTimeout(p.timer);p.reject(Error('App bridge disconnected'));}pending.clear();
-    const banner=document.createElement('div');banner.textContent='App 连接已断开，请刷新页面重新连接。';
-    banner.style.cssText='position:fixed;top:0;left:0;right:0;z-index:2147483647;padding:12px;background:#822;color:white;text-align:center';document.body.append(banner);
+    startup.fail(Error('App 连接已断开，请重新加载。'));
   };
 })();
-window.chatgptWebReady.catch(error=>{
-  const show=()=>{
-    const box=document.createElement('pre');
-    box.textContent='App Web 桥接启动失败：'+(error?.message || String(error))+'\n请确认 App 副本仍在运行，并关闭其他已连接的浏览器标签页后刷新。';
-    box.style.cssText='white-space:pre-wrap;padding:24px;color:#c33;font:16px sans-serif';document.body.append(box);
-  };
-  if(document.body)show();else document.addEventListener('DOMContentLoaded',show,{once:true});
-});
+window.chatgptWebReady.catch(error=>window.chatgptWebStartup.fail(error));

@@ -97,3 +97,11 @@ node --experimental-vm-modules scripts/smoke-pdf.cjs
 - 安装包内 app-initial/app-shared 的 JS/CSS 静态测量：原始 20,404,265 字节；gzip level 6 为 5,986,620 字节；Brotli quality 4 为 5,626,049 字节。该结果是资源压缩大小，不是页面加载时间或首屏总流量。
 - 已提供 `node scripts/smoke-static.cjs` 用于真实服务的认证、304、压缩与动态接口 no-store 检查，本轮未执行该真实 App 集成脚本。
 - 按用户要求停止 Docker 验证并清理独立测试容器/卷；不进行网页交互测试。正在运行的用户服务未重启，需重启加载补丁。
+
+## 启动与失效连接验证（2026-10-09）
+
+- 本机 `npm test` 共 29 项通过。
+- 本机测试覆盖：fetch 不响应及忽略 AbortSignal、响应体不结束、503 重试、401 立即失败、WebSocket 建连超时/提前关闭、握手等待超时、pong 心跳及失效连接清理、主 frame 导航/失败/崩溃/销毁区分。
+- 原 capnweb 回调/剪贴板回归测试增加 adapter.ready()，确认 services 与 startup.whenReady 经过真实 MessagePort RPC 完成。
+- Node 语法检查和 Python unittest 13 项通过。未测试 Docker、未进行网页自动交互，未重启正在运行的用户服务。
+- 手动验收：低速网络下观察阶段变化；关闭网络后确认失败提示；恢复网络点击重新加载；登录失效重新打开访问链接；宿主重启后确认旧页面提示重试。还需检查正常登录页/聊天页出现后提示层消失。

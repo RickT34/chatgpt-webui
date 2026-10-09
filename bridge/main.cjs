@@ -16,6 +16,7 @@ const codec=require('./web-codec.js');
 let peer = null;
 let relayContentsId = null;
 let snapshot = null;
+let rendererState = 'starting';
 let client = null;
 const folderPicker=require('./web-folders.cjs')({send:message=>client?.send(codec.pack(message))});
 const uploads=require('./web-uploads.cjs')(path.join(process.env.CHATGPT_WEB_ROOT,'.uploads'));
@@ -40,6 +41,9 @@ dialog.showOpenDialog=(...args)=>{
 const mime = {'.html':'text/html', '.js':'text/javascript', '.mjs':'text/javascript', '.pdf':'application/pdf', '.css':'text/css', '.svg':'image/svg+xml', '.png':'image/png', '.woff2':'font/woff2', '.json':'application/json', '.wasm':'application/wasm'};
 const authorized=access.authorized;
 const sendStatic=require('./web-static.cjs')();
+const {heartbeat,watchRenderer}=require('./web-lifecycle.cjs');
+const startupScript=fs.readFileSync(path.join(__dirname,'web-startup.js'),'utf8');
+const startupHash=require('node:crypto').createHash('sha256').update(startupScript).digest('base64');
 function json(res,status,value){res.writeHead(status,{'content-type':'application/json','cache-control':'no-store'});res.end(JSON.stringify(value));}
 const server = http.createServer(async(req,res)=>{
   res.setHeader('Referrer-Policy','no-referrer');
@@ -66,10 +70,10 @@ const server = http.createServer(async(req,res)=>{
     return;
   }
   if(u.pathname==='/bridge/bootstrap') return json(res,snapshot?200:503,snapshot || {error:'App renderer is not ready'});
-  if(u.pathname==='/bridge/status') return json(res,200,{peer:!!peer,snapshot:!!snapshot,browser:!!client});
+  if(u.pathname==='/bridge/status') return json(res,200,{peer:!!peer,snapshot:!!snapshot,browser:!!client,rendererState});
   if(u.pathname==='/bridge/entry.js') {
     if(!['GET','HEAD'].includes(req.method)){res.writeHead(405);return res.end();}
-    try{return await sendStatic(req,res,Buffer.from(`await window.chatgptWebReady; await import(${JSON.stringify(rendererEntry)});`),'text/javascript');}
+    try{return await sendStatic(req,res,Buffer.from(`try{await window.chatgptWebReady;const s=window.chatgptWebStartup;if(s.failed)throw Error('启动已中止');s.stage('下载并启动原界面');await s.wait(import(${JSON.stringify(rendererEntry)}),120000,'原界面模块加载超时');s.entryReady();}catch(e){window.chatgptWebStartup.fail(e);}`),'text/javascript');}
     catch{res.writeHead(500,{'cache-control':'no-store'});return res.end('Resource encoding failed');}
   }
   if(!['GET','HEAD'].includes(req.method)) {res.writeHead(405);return res.end();}
@@ -97,6 +101,8 @@ const server = http.createServer(async(req,res)=>{
     }
     if(path.basename(file)==='index.html') {
       let html=data.toString().replace('<head>','<head><base href="/">');
+      html=html.replace('script-src ',`script-src &#39;sha256-${startupHash}&#39; `);
+      html=html.replace(entryMatch[0],`<script>${startupScript}</script>`+entryMatch[0]);
       html=html.replace(/<meta name="referrer" content="[^"]+"/,'<meta name="referrer" content="no-referrer"');
       html=html.replace('connect-src ',`connect-src ${access.websocketOrigin} `);
       html=html.replace(entryMatch[0],'<script src="/bridge/codec.js"></script><link rel="stylesheet" href="/bridge/folder-picker.css"><script src="/bridge/folder-picker.js"></script><script src="/bridge/attachments.js"></script><script src="/bridge/resources.js"></script><script src="/bridge/browser-native.js"></script><script src="/bridge/client.js"></script><script type="module" src="/bridge/entry.js"></script>');
@@ -111,7 +117,7 @@ server.on('upgrade',(req,socket,head)=>{
   if(u.pathname!=='/bridge/socket' || !authorized(req) || !access.allowsWebSocket(req)) {socket.end('HTTP/1.1 403 Forbidden\r\n\r\n');return;}
   if(client) {socket.end('HTTP/1.1 409 Conflict\r\n\r\n');return;}
   wss.handleUpgrade(req,socket,head,ws=>{
-    client=ws;
+    client=ws;heartbeat(ws,{onTick:()=>ws.send(codec.pack({kind:'heartbeat'}))});
     ws.on('message',async data=>{
       let message;try{message=codec.unpack(data.toString());}catch{ws.close(1007,'Invalid message');return;}
       if(message.kind==='call' && typeof message.method==='string' && (message.method.startsWith('folder.')||message.method.startsWith('upload.')||message.method==='download.choose')){
@@ -132,7 +138,7 @@ server.on('upgrade',(req,socket,head)=>{
       if(peer?.readyState===1)peer.send(data.toString());
       else ws.close(1013,'App renderer unavailable');
     });
-    ws.on('close',()=>{void uploads.cancel(ws).catch(error=>console.error('[uploads]',error.message));folderPicker.cancel();downloads.cancel();client=null;peer?.send(JSON.stringify({kind:'disconnect'}));});
+    ws.on('close',()=>{void uploads.cancel(ws).catch(error=>console.error('[uploads]',error.message));if(client!==ws)return;folderPicker.cancel();downloads.cancel();client=null;peer?.send(JSON.stringify({kind:'disconnect'}));});
   });
 });
 const relayTargets = new Set();
@@ -142,7 +148,7 @@ ipcMain.on('chatgpt-web:from-relay',(event,data)=>{
   if(message.kind==='snapshot'){
     const wc=event.sender;
     peer={readyState:1,send:data=>{if(!wc.isDestroyed())wc.send('chatgpt-web:to-relay',data);},close:()=>{}};
-    snapshot=message.value;console.log('[chatgpt-web] renderer bridge ready');return;
+    snapshot=message.value;rendererState='ready';console.log('[chatgpt-web] renderer bridge ready');return;
   }
   if(message.kind==='event' && snapshot){
     const eventValue=codec.decode(message.value);
@@ -160,10 +166,17 @@ server.listen(port,access.host,()=>{
   console.log(`[chatgpt-webui] Open ${access.accessUrl}`);
 });
 app.on('web-contents-created',(_event,wc)=>{
-  wc.once('destroyed',()=>{
+  let generation=0;
+  const invalidate=(reason,destroyed=false)=>{
+    generation++;
     relayTargets.delete(wc.id);
-    if(relayContentsId===wc.id){relayContentsId=null;peer=null;snapshot=null;client?.close(1012,'App renderer closed');}
-  });
+    if(relayContentsId!==wc.id)return;
+    if(destroyed)relayContentsId=null;
+    peer=null;snapshot=null;rendererState=reason;
+    console.warn('[chatgpt-web]',reason);
+    client?.close(1012,reason);
+  };
+  watchRenderer(wc,invalidate);
   wc.on('did-finish-load',()=>{
     const url=wc.getURL();
     if(!url.startsWith('app://') && !url.startsWith('codex://') && !url.startsWith('file://'))return;
@@ -174,7 +187,8 @@ app.on('web-contents-created',(_event,wc)=>{
     relayTargets.add(wc.id);
     const source=fs.readFileSync(path.join(__dirname,'web-relay.js'),'utf8');
     const codec=fs.readFileSync(path.join(__dirname,'web-codec.js'),'utf8');
-    wc.executeJavaScript(`${codec};(${source})()`).catch(e=>console.error('[chatgpt-web] injection failed',e.message));
+    const current=generation;
+    wc.executeJavaScript(`${codec};(${source})()`).catch(e=>{if(current===generation)invalidate('App bridge injection failed');console.error('[chatgpt-web] injection failed',e.message);});
   });
 });
 app.on('before-quit',()=>{client?.close();peer?.close();server.close();});

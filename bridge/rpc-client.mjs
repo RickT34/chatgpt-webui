@@ -10,10 +10,11 @@ export function adaptAppHost(uiPort,clipboard){
  }
  class View extends RpcTarget {get services(){return ui.services;}}
  const host=newMessagePortRpcSession(network.port1,new View());
- let services;
+ let services,upstream;
+ const getServices=()=>upstream??=Promise.resolve(host.services);
  class Host extends RpcTarget {
-  get services(){return services??=new RpcStub(async()=>({...await host.services,clipboard:new Clipboard()}))();}
+  get services(){return services??=new RpcStub(async()=>({...await getServices(),clipboard:new Clipboard()}))();}
  }
  ui=newMessagePortRpcSession(uiPort,new Host());
- return {port:network.port2,close(){ui[Symbol.dispose]();host[Symbol.dispose]();network.port1.close();network.port2.close();uiPort.close();}};
+ return {port:network.port2,async ready(){const value=await getServices();if(value.startup)await value.startup.whenReady();},close(){ui[Symbol.dispose]();host[Symbol.dispose]();network.port1.close();network.port2.close();uiPort.close();}};
 }

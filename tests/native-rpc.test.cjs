@@ -13,12 +13,14 @@ test('clipboard is local, failures propagate, other services and callbacks cross
  class OriginalView extends RpcTarget{get services(){return {callback:new LocalCallback()};}}
  class HostClipboard extends RpcTarget{writeText(){hostWrites++;}}
  class Info extends RpcTarget{get(){return 'original app';}}
- class OriginalHost extends RpcTarget{get services(){return {clipboard:new HostClipboard(),appInfo:new Info()};}}
+ class Startup extends RpcTarget{whenReady(){return 'ready';}}
+ class OriginalHost extends RpcTarget{get services(){return {clipboard:new HostClipboard(),appInfo:new Info(),startup:new Startup()};}}
  const view=newMessagePortRpcSession(a.port1,new OriginalView());
  const adapter=adaptAppHost(a.port2,{writeText:async value=>{if(value==='denied')throw Error('denied by browser');localText=value;},readText:async()=>localText});
  const host=newMessagePortRpcSession(b.port1,new OriginalHost());
  adapter.port.onmessage=e=>b.port2.postMessage(e.data);b.port2.onmessage=e=>adapter.port.postMessage(e.data);
  try{
+  await adapter.ready();
   const services=await view.services;
   await services.clipboard.writeText('client text');assert.equal(localText,'client text');assert.equal(hostWrites,0);
   assert.equal(await services.clipboard.readText(),'client text');
