@@ -30,6 +30,8 @@
 - **右键菜单**：启用原前端自带的网页菜单。
 - **另存为/保存副本**：保存窗口在网页中选择下载文件名。原 App 完成写入后提供客户端下载；浏览器阻止自动下载时，可点击保留的下载链接。
 
+静态页面、脚本和样式支持 Brotli/gzip 压缩。浏览器保留私有缓存，每次访问用 ETag 校验；未变化的资源返回 `304`，无需重新传输内容。补丁或 App 更新导致内容变化时会重新下载。登录、会话接口、上传、下载中转和宿主机文件不缓存。压缩在首次请求时异步进行，结果缓存在进程内（最多 64 MiB），重启后重新生成；无需额外配置 Nginx 压缩。
+
 ## 环境要求
 
 - Linux。
@@ -257,6 +259,8 @@ npm run test:integration
 node scripts/smoke-attachments.cjs
 # 剪贴板 RPC、保存副本和本地资源协议检查：
 node scripts/smoke-native.cjs
+# 静态资源压缩与缓存协议检查：
+node scripts/smoke-static.cjs
 # PDF Worker 资源检查：
 node --experimental-vm-modules scripts/smoke-pdf.cjs
 # 无令牌模式的集成检查：

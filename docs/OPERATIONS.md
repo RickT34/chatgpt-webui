@@ -107,3 +107,14 @@
 - 默认 headless、disable-gpu、no-sandbox、password-store=basic，无 privileged、Docker socket 或桌面挂载。Chromium 沙箱与密码存储选择在双语 README 中说明。
 - .dockerignore 使用允许列表，构建上下文排除安装包、原版资源、账号、会话、日志和用户文件；本地 Compose override 不入 Git。
 - 更新：重新构建镜像并 recreate，保留命名卷；回滚：检出旧代码并重建，由原校验机制重建 App 副本。不用 down -v 做普通停止。
+
+## 2026-10-09 · 静态资源压缩与缓存
+
+- 新增 bridge/static.cjs，随 prepare.py 写入 App 副本；仅处理原 App 静态资源、桥接脚本及 HTML，不压缩或缓存会话接口、附件上传、下载中转和宿主文件。
+- 按 Accept-Encoding 协商 Brotli/gzip/identity，遵循 q 值及禁用项；设置 Vary: Accept-Encoding、Content-Length 和 nosniff，支持 HEAD。
+- 使用异步 zlib（Brotli quality 4、gzip level 6）；相同内容的并发压缩复用同一 Promise，压缩结果采用 64 MiB 上限的 LRU 缓存，不在主线程同步压缩大文件。
+- 静态响应使用 private, no-cache 和内容 SHA-256 弱 ETag。浏览器可存储但每次需校验，未变更时返回 304；内容哈希在地址替换和 HTML 注入后计算，保证补丁、访问源或 App 升级后失效。
+- 未采用永久 immutable 缓存：原 App 的哈希文件名不包含适配补丁版本，同名 JS 的内容可能随适配代码变化。
+- 认证检查先于缓存校验，登录响应和未认证响应显式 no-store；保持动态接口与宿主资源 no-store。
+- 新增静态资源 HTTP 单元测试与 scripts/smoke-static.cjs，后者用于已启动服务的只读压缩/缓存检查。更新双语说明和验证记录。
+- 生效方式：停止当前服务后重新运行 start.sh，自动检测补丁变化并重建副本。无需新增依赖或修改 Nginx；回滚代码后同样重启即可。

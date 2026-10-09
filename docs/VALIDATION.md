@@ -89,3 +89,11 @@ node --experimental-vm-modules scripts/smoke-pdf.cjs
 - 强制重建容器后，/workspace 和 /data/home/.codex 中的测试标记仍存在，固定令牌配置生效。测试结束仅删除独立测试项目的容器、网络及卷，保留构建镜像。
 - `npm test`（10 个测试文件）、Python unittest（13 项）、Compose 配置解析、入口 shell 语法与双语 README 示例一致性检查通过。
 - 未验证 ARM64 实机、设备授权登录、网页交互或模型请求；不将协议检查当作这些功能的端到端验收。
+
+## 压缩与缓存验证（2026-10-09）
+
+- 本机 `npm test` 24 项通过，包括真实临时 HTTP 服务上的 Brotli/gzip 解压字节一致性、编码协商、HEAD、ETag/304、内容变化失效、并发压缩及缓存淘汰。临时 HTTP 监听需允许本机网络权限。
+- Python unittest 13 项通过；main.cjs、static.cjs、smoke-static.cjs 语法检查通过。
+- 安装包内 app-initial/app-shared 的 JS/CSS 静态测量：原始 20,404,265 字节；gzip level 6 为 5,986,620 字节；Brotli quality 4 为 5,626,049 字节。该结果是资源压缩大小，不是页面加载时间或首屏总流量。
+- 已提供 `node scripts/smoke-static.cjs` 用于真实服务的认证、304、压缩与动态接口 no-store 检查，本轮未执行该真实 App 集成脚本。
+- 按用户要求停止 Docker 验证并清理独立测试容器/卷；不进行网页交互测试。正在运行的用户服务未重启，需重启加载补丁。

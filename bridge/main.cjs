@@ -39,14 +39,15 @@ dialog.showOpenDialog=(...args)=>{
 };
 const mime = {'.html':'text/html', '.js':'text/javascript', '.mjs':'text/javascript', '.pdf':'application/pdf', '.css':'text/css', '.svg':'image/svg+xml', '.png':'image/png', '.woff2':'font/woff2', '.json':'application/json', '.wasm':'application/wasm'};
 const authorized=access.authorized;
+const sendStatic=require('./web-static.cjs')();
 function json(res,status,value){res.writeHead(status,{'content-type':'application/json','cache-control':'no-store'});res.end(JSON.stringify(value));}
-const server = http.createServer((req,res)=>{
+const server = http.createServer(async(req,res)=>{
   res.setHeader('Referrer-Policy','no-referrer');
   const u = new URL(req.url, origin);
   if (u.pathname === '/login' && access.acceptsToken(u.searchParams.get('token'))) {
-    res.writeHead(303,{'set-cookie':access.cookie,location:'/'});return res.end();
+    res.writeHead(303,{'set-cookie':access.cookie,location:'/','cache-control':'no-store'});return res.end();
   }
-  if (!authorized(req)) {res.writeHead(401);return res.end('Open the login URL printed by scripts/start.sh.');}
+  if (!authorized(req)) {res.writeHead(401,{'cache-control':'no-store'});return res.end('Open the login URL printed by scripts/start.sh.');}
   if((req.method==='GET'||req.method==='HEAD')&&u.pathname.startsWith('/@fs/')){
     try{void serveFile(req,res,resourcePath(u));}catch{json(res,400,{error:'Invalid resource path'});}return;
   }
@@ -67,10 +68,11 @@ const server = http.createServer((req,res)=>{
   if(u.pathname==='/bridge/bootstrap') return json(res,snapshot?200:503,snapshot || {error:'App renderer is not ready'});
   if(u.pathname==='/bridge/status') return json(res,200,{peer:!!peer,snapshot:!!snapshot,browser:!!client});
   if(u.pathname==='/bridge/entry.js') {
-    res.writeHead(200,{'content-type':'text/javascript','cache-control':'no-store'});
-    return res.end(`await window.chatgptWebReady; await import(${JSON.stringify(rendererEntry)});`);
+    if(!['GET','HEAD'].includes(req.method)){res.writeHead(405);return res.end();}
+    try{return await sendStatic(req,res,Buffer.from(`await window.chatgptWebReady; await import(${JSON.stringify(rendererEntry)});`),'text/javascript');}
+    catch{res.writeHead(500,{'cache-control':'no-store'});return res.end('Resource encoding failed');}
   }
-  if(req.method!=='GET') {res.writeHead(405);return res.end();}
+  if(!['GET','HEAD'].includes(req.method)) {res.writeHead(405);return res.end();}
   try {
     let file;
     if(u.pathname==='/bridge/client.js') file=path.join(__dirname,'web-client.js');
@@ -100,8 +102,8 @@ const server = http.createServer((req,res)=>{
       html=html.replace(entryMatch[0],'<script src="/bridge/codec.js"></script><link rel="stylesheet" href="/bridge/folder-picker.css"><script src="/bridge/folder-picker.js"></script><script src="/bridge/attachments.js"></script><script src="/bridge/resources.js"></script><script src="/bridge/browser-native.js"></script><script src="/bridge/client.js"></script><script type="module" src="/bridge/entry.js"></script>');
       data=Buffer.from(html);
     }
-    res.writeHead(200,{'content-type':mime[path.extname(file)]||'application/octet-stream','cache-control':'no-store','x-content-type-options':'nosniff'});res.end(data);
-  }catch(e){res.writeHead(404);res.end('Not found');}
+    await sendStatic(req,res,data,mime[path.extname(file)]||'application/octet-stream');
+  }catch(e){res.writeHead(404,{'cache-control':'no-store'});res.end('Not found');}
 });
 const wss = new WebSocketServer({noServer:true,maxPayload:32*1024*1024});
 server.on('upgrade',(req,socket,head)=>{

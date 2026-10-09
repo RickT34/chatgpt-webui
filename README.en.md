@@ -29,6 +29,8 @@ This project reuses the installed app's HTML, JavaScript, CSS, and backend, adap
 - **Context menus**: use the original frontend's web menus.
 - **Save as / save a copy**: choose a download filename in a web dialog. The client download becomes available after the original App finishes writing. A visible download link remains if the browser blocks automatic downloads.
 
+Static pages, scripts, and styles support Brotli/gzip compression. The browser keeps a private cache and validates it with ETags on each visit; unchanged resources return `304` without retransmitting their contents. Changes from adapter or App updates trigger a fresh download. Login, session APIs, uploads, staged downloads, and host files are not cached. Compression runs asynchronously on the first request, with results cached in process memory (up to 64 MiB) and regenerated after a restart. No additional Nginx compression setup is needed.
+
 ## Requirements
 
 - Linux.
@@ -271,6 +273,8 @@ npm run test:integration
 node scripts/smoke-attachments.cjs
 # Clipboard RPC, save-copy and local-resource protocol checks:
 node scripts/smoke-native.cjs
+# Static resource compression and cache protocol checks:
+node scripts/smoke-static.cjs
 # PDF worker resource checks:
 node --experimental-vm-modules scripts/smoke-pdf.cjs
 # Integration checks for token-free mode:
