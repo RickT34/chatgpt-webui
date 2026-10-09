@@ -2,7 +2,7 @@
 
 **简体中文** | [English](README.en.md)
 
-在浏览器中远程使用 ChatGPT Desktop 的原版界面，管理宿主机上的 Codex 项目和会话。
+在浏览器中远程使用 ChatGPT Desktop 的原版界面，管理宿主机上的 Codex 项目和会话。支持Docker中运行。
 
 项目复用已安装 App 的 HTML、JavaScript、CSS 和原后端，通过 WebSocket 适配 Electron 通信。
 
@@ -142,7 +142,7 @@ docker compose up -d --build
 docker compose logs -f chatgpt-webui
 ```
 
-首次启动自动下载已适配的 App，Compose 启动即同意仓库内自动下载。镜像仅包含适配代码、Node/Python 和系统依赖，不内置原 App 或账号数据。支持 Linux amd64/arm64；首次启动请预留至少 3 GiB 数据空间并等待下载及副本生成完成。
+首次启动自动下载已适配的 App，Compose 启动即同意仓库内自动下载。支持 Linux amd64/arm64。
 
 获取当前登录链接：
 
@@ -160,7 +160,7 @@ export CHATGPT_WEB_ORIGIN=http://127.0.0.1:18766
 docker compose up -d
 ```
 
-固定令牌用 `export CHATGPT_WEB_ACCESS_TOKEN='replace-with-a-long-random-secret'`；无令牌用 `unset CHATGPT_WEB_ACCESS_TOKEN` 后 `export CHATGPT_WEB_AUTH=none`，再执行 `docker compose up -d`。下载代理可通过 `CHATGPT_WEB_PROXY` 或常规代理环境变量传入；容器内 `127.0.0.1` 指容器自身，代理地址必须能从容器访问。构建阶段的代理使用 Docker 自身的 daemon/build 配置。
+固定令牌用 `export CHATGPT_WEB_ACCESS_TOKEN='replace-with-a-long-random-secret'`；无令牌用 `unset CHATGPT_WEB_ACCESS_TOKEN` 后 `export CHATGPT_WEB_AUTH=none`，再执行 `docker compose up -d`。下载代理可通过 `CHATGPT_WEB_PROXY` 或常规代理环境变量传入。
 
 如果 Linux 上的 Docker 构建网络无法访问软件源，可先用宿主机网络构建，再启动已构建的镜像：
 
@@ -178,11 +178,8 @@ docker compose exec chatgpt-webui /app/.runtime/resources/codex login --device-a
 docker compose restart chatgpt-webui
 ```
 
-这是 Codex 身份认证；桌面 App 中其他账号功能仍可能需要独立登录，网页登录交互请自行验收。不要让宿主机和容器同时写入同一个 Codex 数据目录。
-
 - `data` 持久卷保存 App 下载、副本、Electron profile、Codex 配置/会话、附件、下载中转及日志。容器内路径为 `/data`，Codex 数据在 `/data/home/.codex`。
 - `projects` 持久卷挂载到 `/workspace`，可在网页项目选择器中选择该路径。
-- 要操作已有宿主机项目，新建 `compose.override.yaml`，将项目目录挂载到 `/workspace`：
 
 ```yaml
 services:
@@ -190,18 +187,6 @@ services:
     volumes:
       - /absolute/path/to/projects:/workspace
 ```
-
-进程以非 root 用户 `1000:1000` 运行；挂载目录需允许该 UID/GID 读写。网页中的“宿主机文件”在此部署下指**容器可见的文件系统**；工具命令也在容器中执行，所需开发工具需自行扩展镜像安装。为兼容常规 Docker 环境，默认关闭 Electron 的 Chromium 沙箱并使用 basic 密码存储；不需要 privileged、Docker socket 或宿主机桌面挂载，请保护持久卷中的登录数据。
-
-更新适配代码后重新构建，数据卷会保留：
-
-```sh
-docker compose up -d --build
-# 停止并移除容器，保留数据卷：
-docker compose down
-```
-
-`docker compose down -v` 会删除命名数据卷及其中数据，请勿作为普通停止命令。回滚时检出旧版本代码后重新构建；启动脚本会按该版本补丁重新生成 App 副本。
 
 ## 远程访问
 
