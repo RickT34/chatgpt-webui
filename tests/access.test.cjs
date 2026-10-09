@@ -1,6 +1,13 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const createAccess=require('../bridge/access.cjs');
+test('container bind address is independent from the browser origin',()=>{
+ assert.equal(createAccess({}).host,'127.0.0.1');
+ const a=createAccess({CHATGPT_WEB_HOST:'0.0.0.0',CHATGPT_WEB_ORIGIN:'https://chatgpt.example.com'});
+ assert.equal(a.host,'0.0.0.0');assert.equal(a.origin,'https://chatgpt.example.com');
+ assert.equal(createAccess({CHATGPT_WEB_HOST:'::'}).host,'::');
+ assert.throws(()=>createAccess({CHATGPT_WEB_HOST:'invalid host'}));
+});
 test('random authentication rejects absent and invalid credentials',()=>{
  const a=createAccess({}), b=createAccess({});const token=new URL(a.accessUrl).searchParams.get('token');
  assert.notEqual(a.accessUrl,b.accessUrl);assert(a.acceptsToken(token));assert(!a.acceptsToken('bad'));

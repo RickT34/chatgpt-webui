@@ -151,7 +151,7 @@ ipcMain.on('chatgpt-web:from-relay',(event,data)=>{
   if(client?.readyState===1)client.send(data);
 });
 server.on('error',err=>{console.error('[chatgpt-web]',err.message);app.quit();});
-server.listen(port,'127.0.0.1',()=>{
+server.listen(port,access.host,()=>{
   const dir=path.join(process.env.CHATGPT_WEB_ROOT,'.logs');fs.mkdirSync(dir,{recursive:true,mode:0o700});
   fs.writeFileSync(path.join(dir,'access-url'),`${access.accessUrl}\n`,{mode:0o600});
   if(access.mode==='none')console.log('[chatgpt-webui] Access-token authentication is disabled.');

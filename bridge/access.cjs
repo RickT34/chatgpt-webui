@@ -2,6 +2,8 @@
 const crypto=require('node:crypto');
 module.exports=function createAccess(env=process.env){
  const port=Number(env.CHATGPT_WEB_PORT || 18765);
+ const host=env.CHATGPT_WEB_HOST || '127.0.0.1';
+ if(!require('node:net').isIP(host))throw Error('CHATGPT_WEB_HOST must be an IP address');
  if(!Number.isInteger(port)||port<1||port>65535)throw Error('CHATGPT_WEB_PORT must be between 1 and 65535');
  const mode=env.CHATGPT_WEB_AUTH || 'token';
  if(!['token','none'].includes(mode))throw Error('CHATGPT_WEB_AUTH must be token or none');
@@ -15,7 +17,7 @@ module.exports=function createAccess(env=process.env){
  const cookieName='chatgpt_web';
  function equal(a,b){return typeof a==='string'&&Buffer.byteLength(a)===Buffer.byteLength(b)&&crypto.timingSafeEqual(Buffer.from(a),Buffer.from(b));}
  return {
-  port,origin,mode,websocketOrigin:origin.replace(/^http/,'ws'),
+  port,host,origin,mode,websocketOrigin:origin.replace(/^http/,'ws'),
   accessUrl:mode==='none'?origin+'/':origin+'/login?token='+encodeURIComponent(token),
   acceptsToken:value=>token!==null&&equal(value,token),
   authorized:req=>mode==='none'||(req.headers.cookie||'').split(';').some(v=>equal(v.trim(),`${cookieName}=${session}`)),

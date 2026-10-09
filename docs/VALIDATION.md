@@ -78,3 +78,14 @@ node --experimental-vm-modules scripts/smoke-pdf.cjs
 4. 检查原 app://fs 或 /@fs 路径的图标、图片及资源加载，确认此前 RPC 预览仍正常。
 
 以上为优先四项的验收范围，不代表 webview/MCP、外部应用、拖出文件或音视频已适配。
+
+## Docker 部署验证（2026-10-09）
+
+- 在 Linux amd64 上实际构建 Node 22 / Debian Trixie 镜像，Python 3.13.5 安全解包接口检查通过，原 App 动态库检查通过。
+- 本机 Docker 默认构建网络无法访问 Debian 源，使用 `docker build --network=host -t chatgpt-webui:local .` 完成构建；README 提供该备选命令。
+- 使用独立 Compose 项目 `chatgpt-webui-check`、18766 端口和全新命名卷。首次解包复用本机已下载的官方 `.deb`，bootstrap 重新校验固定 SHA-256；未重复下载 454 MiB 安装包，未导入个人 profile 或 Codex 凭据。
+- 实际进程 UID/GID 为 1000:1000，端口映射仅绑定宿主机 127.0.0.1，健康检查达到 healthy。
+- 随机令牌、固定令牌、无令牌模式分别通过 smoke.cjs：HTTP 认证、原 HTML/CSP、preload 响应回传、真实 App-host MessagePort、startup.whenReady 和 appInfo.get（128 项服务，App 26.930.21537）。
+- 强制重建容器后，/workspace 和 /data/home/.codex 中的测试标记仍存在，固定令牌配置生效。测试结束仅删除独立测试项目的容器、网络及卷，保留构建镜像。
+- `npm test`（10 个测试文件）、Python unittest（13 项）、Compose 配置解析、入口 shell 语法与双语 README 示例一致性检查通过。
+- 未验证 ARM64 实机、设备授权登录、网页交互或模型请求；不将协议检查当作这些功能的端到端验收。

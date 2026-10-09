@@ -1,0 +1,36 @@
+services:
+  chatgpt-webui:
+    build: .
+    image: chatgpt-webui:local
+    init: true
+    restart: unless-stopped
+    shm_size: 1gb
+    ports:
+      - "127.0.0.1:${CHATGPT_WEB_PUBLISH_PORT:-18765}:18765"
+    environment:
+      CHATGPT_WEB_ORIGIN: ${CHATGPT_WEB_ORIGIN:-http://127.0.0.1:18765}
+      CHATGPT_WEB_AUTH: ${CHATGPT_WEB_AUTH:-token}
+      # Bare entries forward exported variables only; absent != empty token/proxy.
+      CHATGPT_WEB_ACCESS_TOKEN:
+      CHATGPT_WEB_PROXY:
+      HTTP_PROXY:
+      HTTPS_PROXY:
+      ALL_PROXY:
+      NO_PROXY:
+      http_proxy:
+      https_proxy:
+      all_proxy:
+      no_proxy:
+    volumes:
+      - data:/data
+      - projects:/workspace
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:18765/').then(r=>process.exit([200,401].includes(r.status)?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10m
+      retries: 3
+
+volumes:
+  data:
+  projects:

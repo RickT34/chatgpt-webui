@@ -6,7 +6,7 @@ Remotely use the original ChatGPT Desktop interface in your browser to manage Co
 
 This project reuses the installed app's HTML, JavaScript, CSS, and backend, adapting Electron communication through WebSocket.
 
-> An unofficial, experimental project with no affiliation with OpenAI. This repository distributes only the adapter code. It does not include ChatGPT installation packages, original frontend assets, account credentials, or conversation data. Users must install the desktop app and sign in.
+> An unofficial, experimental project with no affiliation with OpenAI.
 
 ## Preview
 
@@ -22,36 +22,19 @@ This project reuses the installed app's HTML, JavaScript, CSS, and backend, adap
 - Access the app through SSH forwarding or an Nginx HTTPS / WebSocket reverse proxy.
 - Generate a disposable app copy with source-version and patch-checksum records, making it easier to reapply changes after upgrades.
 
-## Attachments: client or host files
+## Browser operation adapters
 
-Use the original **Add files** action in a conversation. The adapter offers two sources:
-
-- **Client files**: choose files from the device running your browser. Files are uploaded to the host before being handed to the original attachment flow.
-- **Host files**: browse the filesystem of the machine running the App, select one or more files, and add them without copying their contents through the browser.
-
-You can also drop client files onto the original conversation input. The adapter uploads them, supplies host paths, and replays the drop for the original App. Client folder drops are not supported. File type restrictions from the original picker still apply.
-
-Client uploads are limited to **32 MiB per file** (matching the Nginx template). Uploaded files use isolated directories under `.uploads/`, which is ignored by Git. Canceled and failed uploads are removed; files handed to the App are retained so conversation references remain valid. Removing an attachment in the original UI does not automatically delete its staged file. Clean retained files manually only when no conversation needs them.
-
-HTTP/WebSocket attachment tests and drop-handler unit tests pass. Browser interactions for these new flows are awaiting manual acceptance; no model request is sent by the protocol tests.
-
-## Everyday browser operations
-
-- **Copy text/links**: the App-host text clipboard service uses the browser Clipboard API. If a fresh user gesture is required, a copy confirmation dialog appears. Cancellation or failure does not report success to the original UI.
-- **Context menus**: use the original frontend's web menus instead of the host's native menus.
+- **Conversation attachments**: use the original **Add files** action to upload files from your device or select local files on the host machine.
+- **Copy text/links**: the App-host text clipboard service uses the browser Clipboard API.
+- **Context menus**: use the original frontend's web menus.
 - **Save as / save a copy**: choose a download filename in a web dialog. The client download becomes available after the original App finishes writing. A visible download link remains if the browser blocks automatic downloads.
-- **Local resources**: map `app://fs/...` to authenticated `/@fs/...` URLs, supporting images, icons, PDFs, fonts, and Range requests. Restrictive CSP headers prevent local HTML/scripts from being served as executable same-origin content.
-
-Download staging files live in `.downloads/`, which is ignored by Git. Download links belong to the current process and expire on restart; clean staging files manually when no longer needed. The browser is a trusted remote control client, and resource reads use the host process's filesystem permissions.
-
-These adapters pass protocol and unit tests; browser behavior still needs manual acceptance. `<webview>` / MCP sandboxes, multiple clients, automatic reconnection, dragging files out to a client file manager, system notifications, global shortcuts, and complete media pipelines are not implemented. Opening external editors/file managers still happens on the host.
 
 ## Requirements
 
-- Linux; currently tested on Arch Linux.
+- Linux.
 - ChatGPT Desktop: an existing installation can be reused. If none is found, the launcher asks before downloading it into the repository.
 - Currently adapted package version: `chatgpt-desktop 26.930.21537-1`.
-- Node.js 22+/npm and Python 3.11+: the launcher checks for them and asks before installing missing runtimes locally. `flock` is not required.
+- Node.js 22+/npm and Python 3.11+: the launcher checks for them and asks before installing missing runtimes locally.
 - At least 3 GiB of free space is recommended for the initial downloads. Basic bootstrap tools are a POSIX shell, curl or wget, tar, sha256sum, and Linux `ldd`.
 - The host must provide Electron's native libraries, including glibc, GTK, and NSS. Missing libraries are checked before startup.
 
@@ -77,18 +60,18 @@ scripts/start.sh --yes --setup-only
 scripts/start.sh --yes --ozone-platform=headless --disable-gpu
 ```
 
-Noninteractive sessions do not grant approval automatically: pass `--yes` or set `CHATGPT_WEB_SETUP_YES=1`. Once requirements are satisfied, normal startup does not repeat the prompts or downloads. Use `--help` for launcher options; other arguments are passed through to Electron.
+Use `--help` for launcher options; other arguments are passed through to Electron.
 
 Automatic installation covers:
 
 | Component | Source and version | Repository location |
 | --- | --- | --- |
-| ChatGPT Desktop | [Official Linux distribution](https://learn.chatgpt.com/docs/linux/linux-app); pinned to the adapted version `26.930.21537`, selecting the x64 / ARM64 `.deb` and verifying a pinned SHA-256 | `.deps/chatgpt-<version>-<architecture>/` |
-| Node.js + npm | [nodejs.org](https://nodejs.org/dist/latest-v22.x/); resolves the current Node 22 LTS release at installation time and verifies its official SHA-256 | `.deps/node/` |
-| Python | [Astral uv](https://docs.astral.sh/uv/guides/install-python/) downloads a Python 3.12 standalone build; this is not a Linux binary published by python.org | `.deps/python/`, `.deps/uv/` |
+| ChatGPT Desktop | [Official Linux distribution](https://learn.chatgpt.com/docs/linux/linux-app); pinned to the adapted version `26.930.21537`, selecting the x64 / ARM64 build | `.deps/chatgpt-<version>-<architecture>/` |
+| Node.js + npm | [nodejs.org](https://nodejs.org/dist/latest-v22.x/); resolves the current Node 22 LTS release at installation time | `.deps/node/` |
+| Python | [Astral uv](https://docs.astral.sh/uv/guides/install-python/) downloads a Python 3.12 standalone build | `.deps/python/`, `.deps/uv/` |
 | npm dependencies | `package-lock.json`, installed with `npm ci --ignore-scripts` | `node_modules/`, with cache in `.deps/cache/` |
 
-The app's `.deb` is used **only to extract app files**. No package maintenance scripts are executed, no system package is registered, and neither sudo nor changes to the system PATH or shell configuration are required.
+The app's `.deb` is used **only to extract app files; no sudo is required**.
 
 Open the login URL printed in the terminal, such as `http://127.0.0.1:18765/login?token=...`. The current URL is also saved in `.logs/access-url`.
 
@@ -98,36 +81,9 @@ The default listening address is `127.0.0.1:18765`. Press `Ctrl+C` to stop the s
 scripts/start.sh
 ```
 
-After signing in, stop the windowed instance and start the headless version if desired. Sign-in behavior may vary between app versions.
-
-### Download proxies
-
-The launcher shares proxy settings across curl, the Python downloader, uv, and npm, in this order:
-
-1. An explicit `CHATGPT_WEB_PROXY` value.
-2. Exported `http_proxy` / `https_proxy` / `all_proxy` variables (uppercase is also accepted; lowercase takes precedence).
-3. KDE or GNOME **manual proxy** settings when no proxy environment is configured.
-
-`ALL_PROXY` fills in the HTTP/HTTPS variables needed by the download tools. `NO_PROXY` / `no_proxy` is preserved and passed to npm. Large downloads prefer curl, which supports HTTP(S) and SOCKS proxies; without curl, the Python fallback supports HTTP proxies only. SOCKS support in other tools may depend on their versions; a proxy application's HTTP/mixed port offers the best compatibility.
-
-```sh
-# Explicitly select your local proxy application's HTTP/mixed port
-CHATGPT_WEB_PROXY=http://127.0.0.1:7890 scripts/start.sh --setup-only
-
-# Inherit standard system proxy environment variables
-export HTTPS_PROXY=http://127.0.0.1:7890
-export NO_PROXY=localhost,127.0.0.1,::1
-scripts/start.sh --setup-only
-
-# Disable proxies for this run, including desktop discovery
-CHATGPT_WEB_PROXY= scripts/start.sh --setup-only
-```
-
-PAC scripts and browser-extension-only proxies are not evaluated; specify the proxy address explicitly in those cases. GNOME manual proxy discovery does not read authentication passwords; use an authenticated `CHATGPT_WEB_PROXY` environment value if needed. The launcher's proxy-source message does not print addresses or credentials, and no proxy configuration is written into the repository. Shell aliases or variables that have not been exported are not inherited by child processes.
+After signing in, stop the windowed instance and start the headless version if desired.
 
 ### Three access-token modes
-
-The access token controls access to this Web UI only. **It is not an OpenAI API key and does not replace signing in to the app.**
 
 **Default: generate a random token on each start**
 
@@ -153,7 +109,7 @@ unset CHATGPT_WEB_ACCESS_TOKEN
 CHATGPT_WEB_AUTH=none scripts/start.sh --ozone-platform=headless --disable-gpu
 ```
 
-Open `http://127.0.0.1:18765/` directly. Anyone who can reach the service can operate the host app in this mode. Use it only on a trusted local machine, through a private tunnel, or behind a reverse proxy with separate authentication. **Do not expose an unauthenticated endpoint directly to the public internet.** WebSocket connections still enforce the page Origin even when token authentication is disabled.
+Open `http://127.0.0.1:18765/` directly. Anyone who can reach the service can operate the host app in this mode. Use it only on a trusted local machine, through a private tunnel, or behind a reverse proxy with separate authentication. **Do not expose an unauthenticated endpoint directly to the public internet.**
 
 ### Configuration
 
@@ -163,12 +119,11 @@ Open `http://127.0.0.1:18765/` directly. Anyone who can reach the service can op
 | `CHATGPT_WEB_PROXY` | Environment / desktop manual proxy | Shared download proxy; an empty value disables proxies |
 | `CHATGPT_WEB_PYTHON` | System or local Python | Explicit path to the bootstrap Python interpreter |
 | `CHATGPT_WEB_SETUP_YES` | `0` | Set to `1` to approve repository-local installation, equivalent to `--yes` |
+| `CHATGPT_WEB_HOST` | `127.0.0.1`; container `0.0.0.0` | Server bind IP, independent of the browser-facing origin |
 | `CHATGPT_WEB_PORT` | `18765` | Local listening port |
 | `CHATGPT_WEB_AUTH` | `token` | `token` or `none` |
 | `CHATGPT_WEB_ACCESS_TOKEN` | Randomly generated | Custom access token; do not combine with `none` |
 | `CHATGPT_WEB_ORIGIN` | `http://127.0.0.1:<port>` | The actual browser-facing origin, such as `https://chatgpt.example.com` |
-
-`CHATGPT_WEB_ORIGIN` accepts a protocol, hostname, and optional port. Path prefixes are not supported. It controls the login URL, WebSocket Origin validation, CSP, and the Secure attribute on HTTPS cookies.
 
 Examples of changing the app directory or port:
 
@@ -176,6 +131,76 @@ Examples of changing the app directory or port:
 CHATGPT_APP_DIR=/path/to/chatgpt scripts/start.sh --setup-only
 CHATGPT_WEB_PORT=18766 scripts/start.sh --ozone-platform=headless --disable-gpu
 ```
+
+## Docker deployment
+
+Install Docker Engine and the Compose plugin, then run from the repository directory:
+
+```sh
+docker compose up -d --build
+docker compose logs -f chatgpt-webui
+```
+
+The first start automatically downloads the adapted App version; starting Compose approves these local downloads. The image includes only the adapter, Node/Python, and system dependencies, without the original App or account data. Linux amd64/arm64 are supported. Allow at least 3 GiB for data and wait for the initial download and runtime preparation to finish.
+
+Retrieve the current login URL:
+
+```sh
+docker compose exec chatgpt-webui cat /app/.logs/access-url
+```
+
+The port is published only on the host's `127.0.0.1:18765` by default. Use the SSH tunnel or host Nginx template below for remote access. If the port is already occupied or you use an external domain, configure it before starting:
+
+```sh
+export CHATGPT_WEB_PUBLISH_PORT=18766
+export CHATGPT_WEB_ORIGIN=http://127.0.0.1:18766
+# For HTTPS reverse proxies, use the actual browser-facing origin:
+# export CHATGPT_WEB_ORIGIN=https://chatgpt.example.com
+docker compose up -d
+```
+
+For a fixed token, use `export CHATGPT_WEB_ACCESS_TOKEN='replace-with-a-long-random-secret'`. For token-free access, run `unset CHATGPT_WEB_ACCESS_TOKEN` and `export CHATGPT_WEB_AUTH=none`, then `docker compose up -d`. Downloads accept `CHATGPT_WEB_PROXY` or standard proxy environment variables. Inside the container, `127.0.0.1` refers to the container itself; the proxy must be reachable from it. Build-time proxies use Docker's own daemon/build configuration.
+
+If Docker's build network cannot reach package sources on Linux, build using the host network and then start the existing image:
+
+```sh
+docker build --network=host -t chatgpt-webui:local .
+docker compose up -d --no-build
+```
+
+### Sign-in, projects, and persistence
+
+The container is a separate execution environment. **It does not automatically read host credentials, Codex conversations, or files.** For Codex, use the bundled CLI's device authorization flow (your account must allow device authorization), then follow the terminal instructions in your client browser:
+
+```sh
+docker compose exec chatgpt-webui /app/.runtime/resources/codex login --device-auth
+docker compose restart chatgpt-webui
+```
+
+This authenticates Codex. Other desktop App account features may still require separate sign-in; browser sign-in interactions require manual acceptance. Do not let the host and container write to the same Codex data directory concurrently.
+
+- The `data` volume stores downloaded App files, the runtime copy, Electron profile, Codex configuration/conversations, attachments, staged downloads, and logs. It is mounted at `/data`; Codex data lives in `/data/home/.codex`.
+- The `projects` volume is mounted at `/workspace`, which you can select in the web project picker.
+- To work on existing host projects, create `compose.override.yaml` and mount your project directory at `/workspace`:
+
+```yaml
+services:
+  chatgpt-webui:
+    volumes:
+      - /absolute/path/to/projects:/workspace
+```
+
+The process runs as the non-root user `1000:1000`; mounted directories must be readable and writable by that UID/GID. In this deployment, “host files” means **files visible inside the container**. Tool commands also run inside the container; extend the image to install additional development tools. For compatibility with standard Docker environments, the default command disables Electron's Chromium sandbox and uses basic password storage. No privileged mode, Docker socket, or host desktop mount is required. Protect the credentials stored in the data volume.
+
+Rebuild after updating the adapter code; data volumes are retained:
+
+```sh
+docker compose up -d --build
+# Stop and remove containers while retaining data volumes:
+docker compose down
+```
+
+`docker compose down -v` deletes named volumes and their data; do not use it for a normal stop. To roll back, check out the previous code version and rebuild. Startup regenerates the App copy using that version's patches.
 
 ## Remote access
 
@@ -206,7 +231,7 @@ scripts/start.sh --ozone-platform=headless --disable-gpu
 4. Run `sudo nginx -t` and reload Nginx after validation succeeds.
 5. Open the **HTTPS** login URL printed in the terminal.
 
-The template includes WebSocket Upgrade handling, long connection timeouts, and disabled proxy buffering. Access logging is disabled for this site to avoid recording tokens in login URLs. Make sure `CHATGPT_WEB_ORIGIN` exactly matches the browser-facing origin.
+Make sure `CHATGPT_WEB_ORIGIN` exactly matches the browser-facing origin.
 
 ## Updates, rollback, and data locations
 

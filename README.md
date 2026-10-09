@@ -6,7 +6,7 @@
 
 项目复用已安装 App 的 HTML、JavaScript、CSS 和原后端，通过 WebSocket 适配 Electron 通信。
 
-> 非官方实验项目，与 OpenAI 无隶属关系。本仓库只分发适配代码，不包含 ChatGPT 安装包、原版前端资源、账号凭据或会话数据。使用者需要自行安装桌面 App 并完成登录。
+> 非官方实验项目，与 OpenAI 无隶属关系。
 
 ## 运行效果
 
@@ -23,33 +23,16 @@
 - 支持 SSH 转发或 Nginx HTTPS / WebSocket 反向代理。
 - 用脚本生成可撤销的 App 副本，保留源版本及补丁校验记录，方便升级后重新应用。
 
-## 对话附件：客户端或宿主机
+## 浏览器端操作桥接
 
-在对话中使用原来的“添加文件”入口，会出现两种来源：
-
-- **客户端文件**：选择浏览器所在设备上的文件，上传到宿主机后交给原 App 添加附件。
-- **宿主机文件**：浏览运行 App 的机器，选择一个或多个文件，直接使用宿主机路径，不经过浏览器复制文件内容。
-
-也可以把客户端文件拖入原对话输入框。适配层会先上传文件、补全宿主机路径，再交由原 App 的拖放流程处理。暂不支持拖入客户端文件夹；原选择器的文件类型限制仍然生效。
-
-客户端上传限制为**单文件 32 MiB**，与 Nginx 模板一致。文件保存在 `.uploads/` 下的独立目录，该目录不入 Git。取消或失败的上传会清理；已交给 App 的文件保留，避免历史对话引用失效。从原 UI 移除附件不会自动删除落盘文件，确认会话不再使用后再手动清理。
-
-新增附件协议测试与拖放处理单元测试已通过。网页实际交互留待手动验收；协议测试不发送模型请求。
-
-## 浏览器端日常操作
-
-- **复制文字/链接**：App-host 的文本剪贴板服务改为浏览器 Clipboard API；若浏览器要求用户手势，会弹出确认复制窗口。取消或复制失败不会向原界面报告成功。
-- **右键菜单**：启用原前端自带的网页菜单，不再调用宿主机原生菜单。
+- **对话附件上传** 在对话中使用原来的“添加文件”入口，可选上传文件或使用宿主机本地文件。
+- **复制文字/链接**：App-host 的文本剪贴板服务改为浏览器 Clipboard API。
+- **右键菜单**：启用原前端自带的网页菜单。
 - **另存为/保存副本**：保存窗口在网页中选择下载文件名。原 App 完成写入后提供客户端下载；浏览器阻止自动下载时，可点击保留的下载链接。
-- **本地资源**：将 `app://fs/...` 映射为带认证的 `/@fs/...`，支持图片、图标、PDF、字体等资源及 Range 请求。资源响应带限制性 CSP，HTML/脚本不作为同源可执行内容提供。
-
-下载中转文件位于 `.downloads/`，不入 Git。当前进程中的下载链接在重启后失效；中转文件需在确认不再使用后手动清理。网页客户端是受信任的远程控制端，资源请求以宿主机进程的文件读取权限执行。
-
-这些适配通过了协议和单元测试，网页行为仍需手动验收。`<webview>` / MCP 沙箱、多客户端连接、自动重连、拖出到客户端文件管理器、系统通知、全局快捷键和音视频完整链路尚未补齐。外部编辑器/文件管理器打开操作仍发生在宿主机。
 
 ## 环境要求
 
-- Linux；当前实测 Arch Linux。
+- Linux。
 - ChatGPT Desktop：可复用已安装版本；未安装时会询问并下载到仓库。
 - 当前适配版本：`chatgpt-desktop 26.930.21537-1`。
 - Node.js 22+/npm 与 Python 3.11+：启动脚本自动检测，缺失时询问并本地安装。
@@ -101,31 +84,6 @@ scripts/start.sh
 
 登录后停止窗口版本，再按需启动 headless 版本。
 
-### 下载代理
-
-启动脚本会统一为 curl、Python 下载器、uv 和 npm 传递代理配置，优先级为：
-
-1. `CHATGPT_WEB_PROXY` 显式指定。
-2. 已导出的 `http_proxy` / `https_proxy` / `all_proxy`（也接受大写；同名时小写优先）。
-3. 没有上述配置时，读取 KDE 或 GNOME 的**手动代理**设置。
-
-`ALL_PROXY` 会补齐下载工具需要的 HTTP/HTTPS 变量；`NO_PROXY` / `no_proxy` 保留并同步给 npm。大文件优先由 curl 下载，支持 HTTP(S) 和 SOCKS 代理；没有 curl 时的 Python 回退只支持 HTTP 代理。不同工具对 SOCKS 的支持可能受其版本影响，使用代理软件的 HTTP/mixed 端口兼容性最好。
-
-```sh
-# 明确指定本机代理软件的 HTTP/mixed 端口
-CHATGPT_WEB_PROXY=http://127.0.0.1:7890 scripts/start.sh --setup-only
-
-# 继承常规系统代理环境变量
-export HTTPS_PROXY=http://127.0.0.1:7890
-export NO_PROXY=localhost,127.0.0.1,::1
-scripts/start.sh --setup-only
-
-# 本次禁用代理，包括桌面自动发现
-CHATGPT_WEB_PROXY= scripts/start.sh --setup-only
-```
-
-不执行 PAC 脚本，也不读取仅存在于浏览器扩展中的代理；此类情况请显式提供代理地址。GNOME 手动代理自动发现不读取认证密码，需要认证时可用带凭据的 `CHATGPT_WEB_PROXY` 环境变量。脚本的代理来源提示不输出地址或凭据，配置不会写入仓库。仅设置 shell 别名而未 export 的变量不能被子进程继承。
-
 ### 三种访问令牌模式
 
 **默认：每次启动生成随机令牌**
@@ -162,6 +120,7 @@ CHATGPT_WEB_AUTH=none scripts/start.sh --ozone-platform=headless --disable-gpu
 | `CHATGPT_WEB_PROXY` | 环境/桌面手动代理 | 统一下载代理；空值禁用代理 |
 | `CHATGPT_WEB_PYTHON` | 系统或本地 Python | 显式指定引导 Python 路径 |
 | `CHATGPT_WEB_SETUP_YES` | `0` | `1` 等同 `--yes`，同意仓库内安装 |
+| `CHATGPT_WEB_HOST` | `127.0.0.1`；容器 `0.0.0.0` | 服务监听 IP，与浏览器访问源独立 |
 | `CHATGPT_WEB_PORT` | `18765` | 本机监听端口 |
 | `CHATGPT_WEB_AUTH` | `token` | `token` 或 `none` |
 | `CHATGPT_WEB_ACCESS_TOKEN` | 随机生成 | 自定义访问令牌；不要与 `none` 同时设置 |
@@ -173,6 +132,76 @@ CHATGPT_WEB_AUTH=none scripts/start.sh --ozone-platform=headless --disable-gpu
 CHATGPT_APP_DIR=/path/to/chatgpt scripts/start.sh --setup-only
 CHATGPT_WEB_PORT=18766 scripts/start.sh --ozone-platform=headless --disable-gpu
 ```
+
+## Docker 部署
+
+安装 Docker Engine 和 Compose 插件后，在仓库目录执行：
+
+```sh
+docker compose up -d --build
+docker compose logs -f chatgpt-webui
+```
+
+首次启动自动下载已适配的 App，Compose 启动即同意仓库内自动下载。镜像仅包含适配代码、Node/Python 和系统依赖，不内置原 App 或账号数据。支持 Linux amd64/arm64；首次启动请预留至少 3 GiB 数据空间并等待下载及副本生成完成。
+
+获取当前登录链接：
+
+```sh
+docker compose exec chatgpt-webui cat /app/.logs/access-url
+```
+
+默认仅发布到宿主机 `127.0.0.1:18765`，可沿用下方 SSH 隧道或宿主机 Nginx 模板。若本机已有服务占用该端口，或使用外部域名，启动前设置：
+
+```sh
+export CHATGPT_WEB_PUBLISH_PORT=18766
+export CHATGPT_WEB_ORIGIN=http://127.0.0.1:18766
+# HTTPS 反代时改为浏览器实际访问的源：
+# export CHATGPT_WEB_ORIGIN=https://chatgpt.example.com
+docker compose up -d
+```
+
+固定令牌用 `export CHATGPT_WEB_ACCESS_TOKEN='replace-with-a-long-random-secret'`；无令牌用 `unset CHATGPT_WEB_ACCESS_TOKEN` 后 `export CHATGPT_WEB_AUTH=none`，再执行 `docker compose up -d`。下载代理可通过 `CHATGPT_WEB_PROXY` 或常规代理环境变量传入；容器内 `127.0.0.1` 指容器自身，代理地址必须能从容器访问。构建阶段的代理使用 Docker 自身的 daemon/build 配置。
+
+如果 Linux 上的 Docker 构建网络无法访问软件源，可先用宿主机网络构建，再启动已构建的镜像：
+
+```sh
+docker build --network=host -t chatgpt-webui:local .
+docker compose up -d --no-build
+```
+
+### 登录、项目和持久化
+
+容器是独立的执行环境，**不会自动读取宿主机的登录信息、Codex 会话或文件**。Codex 可使用内置 CLI 的设备授权登录（需要账号允许设备授权），按终端提示在客户端浏览器完成授权：
+
+```sh
+docker compose exec chatgpt-webui /app/.runtime/resources/codex login --device-auth
+docker compose restart chatgpt-webui
+```
+
+这是 Codex 身份认证；桌面 App 中其他账号功能仍可能需要独立登录，网页登录交互请自行验收。不要让宿主机和容器同时写入同一个 Codex 数据目录。
+
+- `data` 持久卷保存 App 下载、副本、Electron profile、Codex 配置/会话、附件、下载中转及日志。容器内路径为 `/data`，Codex 数据在 `/data/home/.codex`。
+- `projects` 持久卷挂载到 `/workspace`，可在网页项目选择器中选择该路径。
+- 要操作已有宿主机项目，新建 `compose.override.yaml`，将项目目录挂载到 `/workspace`：
+
+```yaml
+services:
+  chatgpt-webui:
+    volumes:
+      - /absolute/path/to/projects:/workspace
+```
+
+进程以非 root 用户 `1000:1000` 运行；挂载目录需允许该 UID/GID 读写。网页中的“宿主机文件”在此部署下指**容器可见的文件系统**；工具命令也在容器中执行，所需开发工具需自行扩展镜像安装。为兼容常规 Docker 环境，默认关闭 Electron 的 Chromium 沙箱并使用 basic 密码存储；不需要 privileged、Docker socket 或宿主机桌面挂载，请保护持久卷中的登录数据。
+
+更新适配代码后重新构建，数据卷会保留：
+
+```sh
+docker compose up -d --build
+# 停止并移除容器，保留数据卷：
+docker compose down
+```
+
+`docker compose down -v` 会删除命名数据卷及其中数据，请勿作为普通停止命令。回滚时检出旧版本代码后重新构建；启动脚本会按该版本补丁重新生成 App 副本。
 
 ## 远程访问
 

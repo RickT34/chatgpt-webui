@@ -1,0 +1,13 @@
+# Allowlist: never send profiles, credentials, sessions or App assets to Docker.
+**
+!Dockerfile
+!package.json
+!package-lock.json
+!bridge/
+!bridge/**
+!scripts/
+!scripts/**
+!deploy/
+!deploy/docker-entrypoint.sh
+**/__pycache__/
+**/*.pyc

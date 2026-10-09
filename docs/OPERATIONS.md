@@ -96,3 +96,14 @@
 - capnweb 从开发依赖调整为运行依赖；新增代码随自动准备流程写入副本。
 - 真实原 App 协议测试已通过：workspaceFiles.saveCopy、save-file、客户端下载字节、未登录资源拒绝和 Range 响应。未自动操作网页。
 - 后续范围：webview/MCP、媒体、辅助窗口、拖出文件、多连接及重连仍保留已知限制。
+
+## 2026-10-09 · Docker 部署
+
+- 新增 Dockerfile、compose.yaml 和容器入口，继续调用原 start.sh/bootstrap.py；镜像不包含原 App，首次启动使用固定版本及 SHA-256 下载/解包。
+- 基础镜像为 Node 22 / Debian Trixie，构建时安装 Electron 动态库及 Python，并检查安全 tar 解包 API。进程默认以 UID/GID 1000:1000 运行。
+- /app 下的运行数据路径链接到 /data 命名卷；HOME 与 CODEX_HOME 也位于该卷。/workspace 使用独立项目卷，可通过 compose.override.yaml 改为宿主目录挂载。
+- 新增 CHATGPT_WEB_HOST：本机仍默认 127.0.0.1，容器内为 0.0.0.0；公开访问源继续由 CHATGPT_WEB_ORIGIN 控制。Compose 默认仅发布宿主机回环端口。
+- Compose 使用 init、1 GiB 共享内存、HTTP 健康检查及自动重启；转发认证和代理变量，未设置的令牌保持缺省，避免空字符串破坏随机令牌模式。
+- 默认 headless、disable-gpu、no-sandbox、password-store=basic，无 privileged、Docker socket 或桌面挂载。Chromium 沙箱与密码存储选择在双语 README 中说明。
+- .dockerignore 使用允许列表，构建上下文排除安装包、原版资源、账号、会话、日志和用户文件；本地 Compose override 不入 Git。
+- 更新：重新构建镜像并 recreate，保留命名卷；回滚：检出旧代码并重建，由原校验机制重建 App 副本。不用 down -v 做普通停止。
