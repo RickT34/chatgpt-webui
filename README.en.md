@@ -35,6 +35,17 @@ Client uploads are limited to **32 MiB per file** (matching the Nginx template).
 
 HTTP/WebSocket attachment tests and drop-handler unit tests pass. Browser interactions for these new flows are awaiting manual acceptance; no model request is sent by the protocol tests.
 
+## Everyday browser operations
+
+- **Copy text/links**: the App-host text clipboard service uses the browser Clipboard API. If a fresh user gesture is required, a copy confirmation dialog appears. Cancellation or failure does not report success to the original UI.
+- **Context menus**: use the original frontend's web menus instead of the host's native menus.
+- **Save as / save a copy**: choose a download filename in a web dialog. The client download becomes available after the original App finishes writing. A visible download link remains if the browser blocks automatic downloads.
+- **Local resources**: map `app://fs/...` to authenticated `/@fs/...` URLs, supporting images, icons, PDFs, fonts, and Range requests. Restrictive CSP headers prevent local HTML/scripts from being served as executable same-origin content.
+
+Download staging files live in `.downloads/`, which is ignored by Git. Download links belong to the current process and expire on restart; clean staging files manually when no longer needed. The browser is a trusted remote control client, and resource reads use the host process's filesystem permissions.
+
+These adapters pass protocol and unit tests; browser behavior still needs manual acceptance. `<webview>` / MCP sandboxes, multiple clients, automatic reconnection, dragging files out to a client file manager, system notifications, global shortcuts, and complete media pipelines are not implemented. Opening external editors/file managers still happens on the host.
+
 ## Requirements
 
 - Linux; currently tested on Arch Linux.
@@ -213,6 +224,7 @@ Data locations:
 | --- | --- |
 | `.deps/` | Local tools, app downloads, caches, and installation records; excluded from Git |
 | `.runtime/` | Regenerable app copy and resource links |
+| `.downloads/` | Client download staging; download links expire on service restart |
 | `.uploads/` | Client files handed to the App; retain while conversations reference them |
 | `.profile/` | Separate Electron sign-in state, preferences, and cache; retain during upgrades |
 | `.logs/access-url` | Current access URL; treat it as a credential when it contains a token |
@@ -232,6 +244,8 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 npm run test:integration
 # Attachment protocol checks (no browser automation):
 node scripts/smoke-attachments.cjs
+# Clipboard RPC, save-copy and local-resource protocol checks:
+node scripts/smoke-native.cjs
 # PDF worker resource checks:
 node --experimental-vm-modules scripts/smoke-pdf.cjs
 # Integration checks for token-free mode:

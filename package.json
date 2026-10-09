@@ -10,9 +10,7 @@
     "test:integration": "node scripts/smoke.cjs"
   },
   "dependencies": {
-    "ws": "8.21.0"
-  },
-  "devDependencies": {
+    "ws": "8.21.0",
     "capnweb": "0.11.1"
   },
   "license": "MIT"

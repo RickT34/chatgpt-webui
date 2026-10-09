@@ -19,6 +19,15 @@ let snapshot = null;
 let client = null;
 const folderPicker=require('./web-folders.cjs')({send:message=>client?.send(codec.pack(message))});
 const uploads=require('./web-uploads.cjs')(path.join(process.env.CHATGPT_WEB_ROOT,'.uploads'));
+const {resourcePath,serveFile}=require('./web-files.cjs');
+const downloads=require('./web-downloads.cjs')(path.join(process.env.CHATGPT_WEB_ROOT,'.downloads'),{send:message=>client?.send(codec.pack(message))});
+downloads.install();
+const nativeSaveDialog=dialog.showSaveDialog.bind(dialog);
+dialog.showSaveDialog=(...args)=>{
+  const owner=args.length>1?args[0]:null;
+  if(client?.readyState===1&&(!owner||owner.webContents?.id===relayContentsId))return downloads.open(args.length>1?args[1]:args[0]);
+  return nativeSaveDialog(...args);
+};
 const nativeOpenDialog=dialog.showOpenDialog.bind(dialog);
 dialog.showOpenDialog=(...args)=>{
   const options=args.length>1?args[1]:args[0];
@@ -38,6 +47,14 @@ const server = http.createServer((req,res)=>{
     res.writeHead(303,{'set-cookie':access.cookie,location:'/'});return res.end();
   }
   if (!authorized(req)) {res.writeHead(401);return res.end('Open the login URL printed by scripts/start.sh.');}
+  if((req.method==='GET'||req.method==='HEAD')&&u.pathname.startsWith('/@fs/')){
+    try{void serveFile(req,res,resourcePath(u));}catch{json(res,400,{error:'Invalid resource path'});}return;
+  }
+  if((req.method==='GET'||req.method==='HEAD')&&u.pathname.startsWith('/bridge/download/')){
+    const file=downloads.get(u.pathname.slice('/bridge/download/'.length));
+    if(!file)return json(res,404,{error:'Download is unavailable'});
+    void serveFile(req,res,file.path,{downloadName:file.name});return;
+  }
   if(u.pathname==='/bridge/upload' && req.method==='POST'){
     if(!access.allowsWebSocket(req)||req.headers['x-chatgpt-web-upload']!=='1')return json(res,403,{error:'Invalid upload origin'});
     const owner=client;
@@ -58,6 +75,10 @@ const server = http.createServer((req,res)=>{
     let file;
     if(u.pathname==='/bridge/client.js') file=path.join(__dirname,'web-client.js');
     else if(u.pathname==='/bridge/codec.js') file=path.join(__dirname,'web-codec.js');
+    else if(u.pathname==='/bridge/capnweb.js') file=path.join(process.env.CHATGPT_WEB_ROOT,'node_modules/capnweb/dist/index.js');
+    else if(u.pathname==='/bridge/rpc-client.mjs') file=path.join(__dirname,'web-rpc-client.mjs');
+    else if(u.pathname==='/bridge/browser-native.js') file=path.join(__dirname,'web-browser-native.js');
+    else if(u.pathname==='/bridge/resources.js') file=path.join(__dirname,'web-resources.js');
     else if(u.pathname==='/bridge/attachments.js') file=path.join(__dirname,'web-attachments.js');
     else if(u.pathname==='/bridge/folder-picker.js') file=path.join(__dirname,'web-folder-picker.js');
     else if(u.pathname==='/bridge/folder-picker.css') file=path.join(__dirname,'web-folder-picker.css');
@@ -68,11 +89,15 @@ const server = http.createServer((req,res)=>{
       if(!fs.existsSync(file) && !path.extname(relative)) file=path.join(webroot,'index.html');
     }
     let data=fs.readFileSync(file);
+    if(file.startsWith(webroot+path.sep)&&path.extname(file)==='.js'){
+      const source=data.toString();
+      if(source.includes('app://fs'))data=Buffer.from(source.replace(/(["'`])app:\/\/fs\1/g,JSON.stringify(origin)));
+    }
     if(path.basename(file)==='index.html') {
       let html=data.toString().replace('<head>','<head><base href="/">');
       html=html.replace(/<meta name="referrer" content="[^"]+"/,'<meta name="referrer" content="no-referrer"');
       html=html.replace('connect-src ',`connect-src ${access.websocketOrigin} `);
-      html=html.replace(entryMatch[0],'<script src="/bridge/codec.js"></script><link rel="stylesheet" href="/bridge/folder-picker.css"><script src="/bridge/folder-picker.js"></script><script src="/bridge/attachments.js"></script><script src="/bridge/client.js"></script><script type="module" src="/bridge/entry.js"></script>');
+      html=html.replace(entryMatch[0],'<script src="/bridge/codec.js"></script><link rel="stylesheet" href="/bridge/folder-picker.css"><script src="/bridge/folder-picker.js"></script><script src="/bridge/attachments.js"></script><script src="/bridge/resources.js"></script><script src="/bridge/browser-native.js"></script><script src="/bridge/client.js"></script><script type="module" src="/bridge/entry.js"></script>');
       data=Buffer.from(html);
     }
     res.writeHead(200,{'content-type':mime[path.extname(file)]||'application/octet-stream','cache-control':'no-store','x-content-type-options':'nosniff'});res.end(data);
@@ -87,10 +112,11 @@ server.on('upgrade',(req,socket,head)=>{
     client=ws;
     ws.on('message',async data=>{
       let message;try{message=codec.unpack(data.toString());}catch{ws.close(1007,'Invalid message');return;}
-      if(message.kind==='call' && typeof message.method==='string' && (message.method.startsWith('folder.')||message.method.startsWith('upload.'))){
+      if(message.kind==='call' && typeof message.method==='string' && (message.method.startsWith('folder.')||message.method.startsWith('upload.')||message.method==='download.choose')){
         try{
           let value;
-          if(message.method==='upload.retain')uploads.retain(message.args[0],ws);
+          if(message.method==='download.choose')await downloads.choose(...message.args);
+          else if(message.method==='upload.retain')uploads.retain(message.args[0],ws);
           else if(message.method==='upload.discardGroup')await uploads.discardGroup(message.args[0],ws);
           else if(message.method==='upload.discard')await uploads.discard(message.args[0],ws);
           else if(message.method==='folder.selectUploads'){
@@ -104,7 +130,7 @@ server.on('upgrade',(req,socket,head)=>{
       if(peer?.readyState===1)peer.send(data.toString());
       else ws.close(1013,'App renderer unavailable');
     });
-    ws.on('close',()=>{void uploads.cancel(ws).catch(error=>console.error('[uploads]',error.message));folderPicker.cancel();client=null;peer?.send(JSON.stringify({kind:'disconnect'}));});
+    ws.on('close',()=>{void uploads.cancel(ws).catch(error=>console.error('[uploads]',error.message));folderPicker.cancel();downloads.cancel();client=null;peer?.send(JSON.stringify({kind:'disconnect'}));});
   });
 });
 const relayTargets = new Set();

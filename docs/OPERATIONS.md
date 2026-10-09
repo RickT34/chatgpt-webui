@@ -84,3 +84,15 @@
 - 大文件下载优先使用 curl，代理凭据通过环境传递；保留 HTTPS、重定向协议限制和 SHA-256 校验。没有 curl 时显式构造 urllib HTTP 代理，SOCKS/HTTPS 代理提示安装 curl。
 - 不在来源提示中输出代理地址或认证信息，不写入 npmrc 或系统配置。
 - 不执行 PAC；GNOME 代理认证凭据需通过显式环境变量提供。
+
+## 2026-10-09 · 客户端日常操作适配
+
+- 使用 capnweb 的两端 RPC 中继替换 App-host clipboard 服务为客户端实现，其他服务和原前端回调继续双向转发；不依赖私有 RPC 导出表编号。
+- 原前端必须使用 RpcPromise 暴露异步属性，不能直接返回原生 Promise。回归测试覆盖文本写入、读取、拒绝传播和其他服务/回调转发。
+- 不再暴露 electronBridge.showContextMenu，让原前端的 disable-native 分支使用既有网页菜单。
+- 接管 showSaveDialog，使用网页文件名窗口；仅对本适配器发出的中转路径，在 writeFile/copyFile/rename 或输出流完成后宣布可下载。普通工作区文件写入不触发下载。
+- 增加受原登录认证保护的下载和 /@fs 资源接口，支持字节范围与 HEAD。下载使用 Content-Disposition attachment；本地资源带 sandbox CSP、nosniff，HTML/JS 作为普通文本提供。
+- 对原静态模块的 app://fs 源常量及 RPC 中的完整资源 URL 做转换。不改变普通文字中引用该协议的句子，不转换二进制消息。
+- capnweb 从开发依赖调整为运行依赖；新增代码随自动准备流程写入副本。
+- 真实原 App 协议测试已通过：workspaceFiles.saveCopy、save-file、客户端下载字节、未登录资源拒绝和 Range 响应。未自动操作网页。
+- 后续范围：webview/MCP、媒体、辅助窗口、拖出文件、多连接及重连仍保留已知限制。

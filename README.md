@@ -36,6 +36,17 @@
 
 新增附件协议测试与拖放处理单元测试已通过。网页实际交互留待手动验收；协议测试不发送模型请求。
 
+## 浏览器端日常操作
+
+- **复制文字/链接**：App-host 的文本剪贴板服务改为浏览器 Clipboard API；若浏览器要求用户手势，会弹出确认复制窗口。取消或复制失败不会向原界面报告成功。
+- **右键菜单**：启用原前端自带的网页菜单，不再调用宿主机原生菜单。
+- **另存为/保存副本**：保存窗口在网页中选择下载文件名。原 App 完成写入后提供客户端下载；浏览器阻止自动下载时，可点击保留的下载链接。
+- **本地资源**：将 `app://fs/...` 映射为带认证的 `/@fs/...`，支持图片、图标、PDF、字体等资源及 Range 请求。资源响应带限制性 CSP，HTML/脚本不作为同源可执行内容提供。
+
+下载中转文件位于 `.downloads/`，不入 Git。当前进程中的下载链接在重启后失效；中转文件需在确认不再使用后手动清理。网页客户端是受信任的远程控制端，资源请求以宿主机进程的文件读取权限执行。
+
+这些适配通过了协议和单元测试，网页行为仍需手动验收。`<webview>` / MCP 沙箱、多客户端连接、自动重连、拖出到客户端文件管理器、系统通知、全局快捷键和音视频完整链路尚未补齐。外部编辑器/文件管理器打开操作仍发生在宿主机。
+
 ## 环境要求
 
 - Linux；当前实测 Arch Linux。
@@ -210,6 +221,7 @@ scripts/start.sh --ozone-platform=headless --disable-gpu
 | --- | --- |
 | `.deps/` | 本地工具、App 下载、缓存及安装记录，不入库 |
 | `.runtime/` | 可重新生成的 App 副本及资源链接 |
+| `.downloads/` | 客户端下载中转文件；下载链接在服务重启后失效 |
 | `.uploads/` | 已交给 App 的客户端附件，仍被会话引用时应保留 |
 | `.profile/` | 独立 Electron 登录、偏好和缓存，升级时保留 |
 | `.logs/access-url` | 当前访问入口，包含令牌时属于凭据 |
@@ -229,6 +241,8 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 npm run test:integration
 # 附件协议测试，不自动操作网页：
 node scripts/smoke-attachments.cjs
+# 剪贴板 RPC、保存副本和本地资源协议检查：
+node scripts/smoke-native.cjs
 # PDF Worker 资源检查：
 node --experimental-vm-modules scripts/smoke-pdf.cjs
 # 无令牌模式的集成检查：

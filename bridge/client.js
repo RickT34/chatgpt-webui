@@ -9,16 +9,19 @@ window.chatgptWebReady=(async()=>{
   if(!bootstrap)throw Error('App renderer did not become ready within 60 seconds');
   const ws=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/bridge/socket`);
   await new Promise((resolve,reject)=>{ws.onopen=resolve;ws.onerror=reject;});
+  const {adaptAppHost}=await import('/bridge/rpc-client.mjs');
+  const adaptedPorts=new Map();
   let nextId=1;
   const pending=new Map(), ports=new Map(), workers=new Map(), themeSubscribers=new Set();
   const shared=bootstrap.shared || {};
   const send=value=>ws.send(window.chatgptWebCodec.pack(value));
   const call=(method,...args)=>new Promise((resolve,reject)=>{
     const id=nextId++;
-    const interactivePicker=method==='sendMessageFromView' && args[0]?.type==='fetch' && /^vscode:\/\/codex\/pick-files?$/.test(args[0]?.url||'');
+    const interactivePicker=method==='sendMessageFromView' && args[0]?.type==='fetch' && /^vscode:\/\/codex\/(?:pick-files?|save-file)$/.test(args[0]?.url||'');
     const timer=interactivePicker?null:setTimeout(()=>{pending.delete(id);reject(Error(`Bridge timeout: ${method}`));},60000);
     pending.set(id,{resolve,reject,timer});send({kind:'call',method,args,id});
   });
+  const native=window.chatgptWebNative(call);
   const folderPicker=window.chatgptWebFolderPicker(call);
   const attachments=window.chatgptWebAttachments(call);
   window.codexWindowType='electron';
@@ -36,19 +39,22 @@ window.chatgptWebReady=(async()=>{
     getSystemThemeVariant:()=>bootstrap.getSystemThemeVariant,
     subscribeToSystemThemeVariant:cb=>{themeSubscribers.add(cb);return()=>themeSubscribers.delete(cb);},
     getPathForFile:file=>attachments.getPathForFile(file),startFileDrag:()=>false,startLinkDrag:()=>{},
-    showContextMenu:(...args)=>call('showContextMenu',...args),
+    // Omitting showContextMenu selects the original frontend's web menu implementation.
     getFastModeRolloutMetrics:(...args)=>call('getFastModeRolloutMetrics',...args),
     triggerSentryTestError:async()=>{},
   };
   document.documentElement.dataset.theme=bootstrap.getSystemThemeVariant;
   window.addEventListener('message',event=>{
     if(event.source!==window || event.data?.type!=='connect-app-host')return;
-    const id=nextId++, port=event.data.port || event.ports[0];
+    const id=nextId++, adapted=adaptAppHost(event.data.port || event.ports[0],native.clipboard),port=adapted.port;
+    adaptedPorts.set(id,adapted);
     ports.set(id,port);port.onmessage=e=>send({kind:'port',id,value:e.data});
     send({kind:'port-open',id});
   });
   ws.onmessage=event=>{
-    const m=window.chatgptWebCodec.unpack(event.data);
+    const m=window.chatgptWebResources.rewrite(window.chatgptWebCodec.unpack(event.data));
+    if(m.kind==='save-open'){native.save(m.value);return;}
+    if(m.kind==='download-ready'){native.ready(m.value);return;}
     if(m.kind==='file-open'){attachments.open(m.value);return;}
     if(m.kind==='folder-open'){folderPicker.open(m.value);return;}
     if(m.kind==='result'){
@@ -63,7 +69,8 @@ window.chatgptWebReady=(async()=>{
     }
   };
   ws.onclose=()=>{
-    folderPicker.close();attachments.close();
+    folderPicker.close();attachments.close();native.close();
+    for(const adapted of adaptedPorts.values())adapted.close();adaptedPorts.clear();
     for(const p of pending.values()){clearTimeout(p.timer);p.reject(Error('App bridge disconnected'));}pending.clear();
     const banner=document.createElement('div');banner.textContent='App 连接已断开，请刷新页面重新连接。';
     banner.style.cssText='position:fixed;top:0;left:0;right:0;z-index:2147483647;padding:12px;background:#822;color:white;text-align:center';document.body.append(banner);

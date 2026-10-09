@@ -65,3 +65,16 @@ node --experimental-vm-modules scripts/smoke-pdf.cjs
 - Python 回归测试覆盖大小写优先级、ALL_PROXY、NO_PROXY、显式覆盖/禁用、日志凭据隐藏，以及 KDE/GNOME 手动代理读取。
 - `python scripts/smoke-proxy.py` 启动回环 HTTPS 服务和 CONNECT 代理，检查真实下载器、npm ping、uv dry-run 下载及 NO_PROXY 绕过。
 - 临时证书只供测试进程信任，不关闭 TLS 验证、不访问外部站点、不实际安装测试 wheel。
+
+## 客户端剪贴板、菜单、保存和资源
+
+`node scripts/smoke-native.cjs` 不操作网页，使用模拟的客户端剪贴板接入真实 App-host，再验证 workspaceFiles.saveCopy 和原 save-file 生成下载，检查文件字节、认证、Range 和资源 CSP。
+
+手动验收：
+
+1. 复制消息/代码/分享链接，在客户端其他应用中粘贴；若出现确认窗口，点击“复制”，再测试取消不会显示成功。
+2. 在文件、项目、消息等位置打开右键菜单，检查菜单出现在网页，并验证可用操作。
+3. 另存为、保存副本、导出日志，选择文件名，检查客户端收到完整文件；自动下载被拦截时使用下载链接。
+4. 检查原 app://fs 或 /@fs 路径的图标、图片及资源加载，确认此前 RPC 预览仍正常。
+
+以上为优先四项的验收范围，不代表 webview/MCP、外部应用、拖出文件或音视频已适配。
