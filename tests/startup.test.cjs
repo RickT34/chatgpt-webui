@@ -38,3 +38,16 @@ test('only main-frame navigation/failure and renderer loss invalidate readiness'
  wc.emit('did-start-navigation',{},'url',false,true);wc.emit('did-fail-load',{},-2,'failed','url',true);
  wc.emit('render-process-gone');wc.emit('destroyed');assert.equal(events.length,4);assert.equal(events.at(-1)[1],true);
 });
+test('replacing the initial loading DOM or mounting React does not complete startup',()=>{
+ const vm=require('node:vm'),fs=require('node:fs');
+ const timers=new Map();let next=0,removed=0;
+ const node=()=>({style:{},setAttribute(){},append(){},remove(){removed++;}});
+ const document={body:node(),createElement:node,addEventListener(){},getElementById:()=>({children:[{}],querySelector:()=>null})};
+ const window={addEventListener(){},dispatchEvent(){}};
+ vm.runInNewContext(fs.readFileSync('bridge/startup.js','utf8'),{window,document,location:{reload(){}},Event,
+  setTimeout:fn=>{timers.set(++next,fn);return next;},clearTimeout:id=>timers.delete(id)});
+ const startup=window.chatgptWebStartup;
+ startup.hostReady();startup.entryReady();startup.phase('renderer_ready');
+ assert.equal(removed,0,'React loading fallback must retain the startup watchdog');assert.equal(timers.size,1);
+ startup.phase('first_content_visible');assert.equal(removed,1);assert.equal(timers.size,0);
+});

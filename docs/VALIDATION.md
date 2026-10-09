@@ -109,3 +109,9 @@ node --experimental-vm-modules scripts/smoke-pdf.cjs
 ### App 服务握手监测修正
 
 此前的 adapter.ready() 测试仅使用立即返回的 startup.whenReady，未覆盖原生窗口长期未就绪。本次改为永不完成的原生就绪方法，断言监测器不调用它、不会提前读取 services，且原前端取得 services 后观察 Promise 正常完成。29 项本机测试通过；这不等于已验证用户现场恢复。
+
+### 网页首屏判断与原生窗口等待修正
+
+- 完整原有 29 项本机测试通过；新增首屏状态测试后，定向运行 startup/native-rpc 两个测试文件通过。
+- 用原生 whenReady 永不完成的服务验证网页适配方法可返回，isSentryEnabled/reach 仍到达原服务，first_content_visible 回调到达客户端。
+- Node 中的状态测试确认静态 loading 节点移除和 renderer_ready 不会让提示消失；first_content_visible 才会取消超时并结束提示。不将这项测试当作真实浏览器验收。

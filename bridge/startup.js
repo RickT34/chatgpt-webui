@@ -25,8 +25,8 @@
   });
  }
  function status(){
-  let panel,label,button,timer,failed=false,finished=false,hostReady=false,entryReady=false,stage='下载页面资源',observer;
-  const clean=()=>{clearTimeout(timer);observer?.disconnect();};
+  let panel,label,button,timer,failed=false,finished=false,hostReady=false,entryReady=false,contentReady=false,stage='下载页面资源';
+  const clean=()=>{clearTimeout(timer);};
   const paint=()=>{
    if(!panel){
     panel=document.createElement('div');panel.setAttribute('role','status');
@@ -38,10 +38,9 @@
   const fail=error=>{if(failed)return;failed=true;finished=false;clean();stage=`${stage}失败：${error?.message||String(error)}`;paint();window.dispatchEvent(new Event('chatgpt-web:failed'));};
   const setStage=(value,ms=120000)=>{if(failed||finished)return;stage=value;clearTimeout(timer);timer=setTimeout(()=>fail(Error('等待超时，可以重试；若反复出现，请检查宿主 App 日志。')),ms);paint();};
   const check=()=>{
-   const content=document.getElementById('root');
-   if(!failed&&!finished&&hostReady&&entryReady&&content?.children.length&&!content.querySelector('.startup-loader')){finished=true;clean();panel?.remove();panel=null;}
+   if(!failed&&!finished&&hostReady&&entryReady&&contentReady){finished=true;clean();panel?.remove();panel=null;}
   };
-  document.addEventListener('DOMContentLoaded',()=>{if(failed||finished)return;paint();observer=new MutationObserver(check);observer.observe(document.getElementById('root')||document.body,{childList:true,subtree:true});check();},{once:true});
+  document.addEventListener('DOMContentLoaded',()=>{if(!failed&&!finished)paint();},{once:true});
   window.addEventListener('error',event=>{
    if(finished||failed)return;
    const tag=event.target?.tagName;
@@ -50,7 +49,7 @@
   },true);
   window.addEventListener('unhandledrejection',()=>{if(!finished&&!failed)fail(Error('页面初始化异常，请重试；详细错误见浏览器控制台。'));});
   setStage(stage);
-  return {wait,bootstrap,connect,stage:setStage,fail,get failed(){return failed;},hostReady(){hostReady=true;setStage('初始化界面');check();},entryReady(){entryReady=true;check();}};
+  return {wait,bootstrap,connect,stage:setStage,fail,get failed(){return failed;},hostReady(){hostReady=true;setStage('初始化界面');check();},entryReady(){entryReady=true;check();},phase(value){if(value==='first_content_visible'){contentReady=true;check();}}};
  }
  const api={wait,bootstrap,connect};
  if(typeof module==='object'&&module.exports)module.exports=api;

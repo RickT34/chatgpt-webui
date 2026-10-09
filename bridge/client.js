@@ -50,7 +50,7 @@ window.chatgptWebReady=(async()=>{
   document.documentElement.dataset.theme=bootstrap.getSystemThemeVariant;
   window.addEventListener('message',event=>{
     if(event.source!==window || event.data?.type!=='connect-app-host')return;
-    const id=nextId++, adapted=adaptAppHost(event.data.port || event.ports[0],native.clipboard),port=adapted.port;
+    const id=nextId++, adapted=adaptAppHost(event.data.port || event.ports[0],native.clipboard,{onPhase:phase=>startup.phase(phase)}),port=adapted.port;
     adaptedPorts.set(id,adapted);
     ports.set(id,port);port.onmessage=e=>send({kind:'port',id,value:e.data});
     send({kind:'port-open',id});

@@ -136,3 +136,12 @@
 - 撤回主动探测和共享上游 services Promise，恢复原前端触发的服务获取路径。ready() 只观察该请求成功或失败，不调用任何额外 App 生命周期方法；连接关闭时拒绝尚未完成的等待。
 - 回归测试把原生 startup.whenReady 设为永不完成，验证桥接握手仍完成、没有额外生命周期调用、上游服务只按原前端请求获取一次，其他 RPC 和剪贴板仍可用。
 - 本机 29 项测试通过；未测试网页交互或 Docker，未修改 README。实际页面恢复情况仍需重启服务后手动确认。
+
+## 2026-10-09 · 网页窗口启动门槛及首屏信号
+
+- 用户反馈提示层消失后仍停在原 App loading。上一轮仅移除监测器的额外调用，原 React 前端仍调用 startup.whenReady()，并通过 Suspense 等待它；原 App 方法依赖宿主 primaryWindowContentReady，受宿主启动关键路径影响。
+- 在浏览器 RPC 适配器中增加 Startup 服务：whenReady 表示已取得浏览器所需服务，不再等待隐藏的原生窗口；isSentryEnabled 和 reach 保持转发。保留 native stub 的独立引用并在适配目标销毁时释放。
+- 原前端的静态 startup-loader 会被 React loading fallback 替换，不能用 DOM 占位节点消失证明界面可用。改为监听原前端实际调用 startup.reach('first_content_visible')，并与入口执行/服务握手一起决定关闭提示层。
+- 未到 first_content_visible 时保留初始化超时和重试，不主动伪造该信号，不改变原界面业务初始化。
+- 回归覆盖原生 whenReady 永不完成、网页 whenReady 正常返回、阶段回调及原方法转发；状态测试覆盖“旧 loading DOM 消失、React 已挂载”仍保持等待，到实际首屏信号才结束。
+- 未修改 README，未测试 Docker 或浏览器交互；需重启服务生成新副本，再手动确认现场恢复。
