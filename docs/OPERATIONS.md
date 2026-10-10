@@ -145,3 +145,16 @@
 - 未到 first_content_visible 时保留初始化超时和重试，不主动伪造该信号，不改变原界面业务初始化。
 - 回归覆盖原生 whenReady 永不完成、网页 whenReady 正常返回、阶段回调及原方法转发；状态测试覆盖“旧 loading DOM 消失、React 已挂载”仍保持等待，到实际首屏信号才结束。
 - 未修改 README，未测试 Docker 或浏览器交互；需重启服务生成新副本，再手动确认现场恢复。
+
+## 2026-10-10 · 启动资源并行加载与磁盘预压缩
+
+- 保留原 App 界面、后端与 renderer relay。首屏模块使用 modulepreload 提前下载/解析，原入口仍等待 chatgptWebReady 后执行；不提前调用原 App 服务，也不伪造 first_content_visible。
+- 桥接 classic scripts 改为按顺序 defer；RPC adapter 在 bootstrap/WebSocket 等待期间并行导入。预加载范围来自原入口直接列出的 JS 依赖，不递归预加载整个 App。页面 base 仍为 `/`，不改变原路由。
+- 新增 `scripts/prepare-static.cjs`：准备阶段读取副本 ASAR，将静态资源写入 `.runtime/web-static/objects`，提前完成 app://fs 常量替换、SHA-256、Brotli/gzip 压缩。按内容寻址复用未变资源，最后发布 manifest 并清理旧对象；准备过程沿用启动锁。
+- 新资源 URL 为 `/static/<version>/...`。版本覆盖原 App、桥接补丁和访问源，模块的相对导入继承该版本。版本资源使用 `private, max-age=31536000, immutable`；旧的未带版本 URL 仍可访问，使用 `private, no-cache`。未知版本返回 404/no-store，必须刷新页面，不能把新代码放到旧的 immutable URL 下。
+- 静态响应按 manifest 直接流式读取磁盘；304/HEAD 不读取正文、不重新计算哈希、不压缩。HTML 在进程启动时生成一次，仍需校验；bootstrap/status、上传、下载及宿主文件维持原认证与 no-store 策略。
+- 首次准备或更新需要额外处理时间与磁盘空间。本次 App 的缓存对象内容约 693 MiB（实际磁盘占用还包括文件系统开销）；后续正常启动复用 manifest，不重复压缩。修改访问源时自动重建版本，内容未变的压缩对象复用。
+- 更新/启动：停止现有服务后，继续使用原启动命令与环境变量（例如现有 `run.sh`）；`start.sh` 自动重建。也可先在相同环境下运行 `sh scripts/start.sh --setup-only`，把准备工作提前完成。`--check` 只检查，不生成资源。
+- 恢复缺失的缓存对象：停止服务后删除 `.runtime/web-static/manifest.json`，再按原环境运行 `--setup-only`；缺失的内容文件会重新生成。若怀疑已有对象内容损坏，删除整个 `.runtime/web-static` 后重新准备。该目录只保存可重建的 App 静态资源，没有 profile/聊天记录。
+- 回滚：恢复上一版代码并按原命令重启，原 manifest 校验会重建 App 副本；无需清理 `.profile`。旧代码不使用新增的磁盘缓存，可在服务停止后删除 `.runtime/web-static` 回收空间。
+- 启动诊断：网页控制台的 `window.chatgptWebStartup.timings` 与 `chatgpt-web:*` Performance marks 记录阶段时间，真正就绪时输出一次汇总；认证后的 `/bridge/status` 增加 staticVersion、uptimeMs 和 rendererReadyMs。后两者从桥接主模块开始执行计时，不含 setup。

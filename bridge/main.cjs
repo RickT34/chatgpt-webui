@@ -1,4 +1,5 @@
 'use strict';
+const hostStartedAt=performance.now();let rendererReadyMs=null;
 // Runs inside the original Electron main process, before its original entrypoint.
 const {app, ipcMain, dialog} = require('electron');
 const fs = require('node:fs');
@@ -9,9 +10,6 @@ const access=require('./web-access.cjs')();
 const {port,origin}=access;
 const webroot = path.join(app.getAppPath(), 'webview');
 const originalHtml = fs.readFileSync(path.join(webroot,'index.html'),'utf8');
-const entryMatch=originalHtml.match(/<script type="module" crossorigin src="([^"]+)"><\/script>/);
-if(!entryMatch)throw Error('Unsupported App: cannot locate renderer module entry');
-const rendererEntry=entryMatch[1].replace(/^\.\//,'/');
 const codec=require('./web-codec.js');
 let peer = null;
 let relayContentsId = null;
@@ -38,12 +36,16 @@ dialog.showOpenDialog=(...args)=>{
   }
   return nativeOpenDialog(...args);
 };
-const mime = {'.html':'text/html', '.js':'text/javascript', '.mjs':'text/javascript', '.pdf':'application/pdf', '.css':'text/css', '.svg':'image/svg+xml', '.png':'image/png', '.woff2':'font/woff2', '.json':'application/json', '.wasm':'application/wasm'};
 const authorized=access.authorized;
-const sendStatic=require('./web-static.cjs')();
+const sendStatic=require('./web-static.cjs')({maxBytes:1024*1024});
+const staticDirectory=path.join(process.env.CHATGPT_WEB_ROOT,'.runtime/web-static');
+const staticManifest=JSON.parse(fs.readFileSync(path.join(staticDirectory,'manifest.json')));
+const sendPrepared=require('./web-static.cjs').prepared(staticDirectory,staticManifest);
+const staticPrefix=`/static/${staticManifest.version}/`;
 const {heartbeat,watchRenderer}=require('./web-lifecycle.cjs');
 const startupScript=fs.readFileSync(path.join(__dirname,'web-startup.js'),'utf8');
-const startupHash=require('node:crypto').createHash('sha256').update(startupScript).digest('base64');
+const page=Buffer.from(require('./web-page.cjs').renderPage(originalHtml,{startup:startupScript,
+ version:staticManifest.version,websocketOrigin:access.websocketOrigin,preloads:staticManifest.preloads}));
 function json(res,status,value){res.writeHead(status,{'content-type':'application/json','cache-control':'no-store'});res.end(JSON.stringify(value));}
 const server = http.createServer(async(req,res)=>{
   res.setHeader('Referrer-Policy','no-referrer');
@@ -70,46 +72,16 @@ const server = http.createServer(async(req,res)=>{
     return;
   }
   if(u.pathname==='/bridge/bootstrap') return json(res,snapshot?200:503,snapshot || {error:'App renderer is not ready'});
-  if(u.pathname==='/bridge/status') return json(res,200,{peer:!!peer,snapshot:!!snapshot,browser:!!client,rendererState});
-  if(u.pathname==='/bridge/entry.js') {
-    if(!['GET','HEAD'].includes(req.method)){res.writeHead(405);return res.end();}
-    try{return await sendStatic(req,res,Buffer.from(`try{await window.chatgptWebReady;const s=window.chatgptWebStartup;if(s.failed)throw Error('启动已中止');s.stage('下载并启动原界面');await s.wait(import(${JSON.stringify(rendererEntry)}),120000,'原界面模块加载超时');s.entryReady();}catch(e){window.chatgptWebStartup.fail(e);}`),'text/javascript');}
-    catch{res.writeHead(500,{'cache-control':'no-store'});return res.end('Resource encoding failed');}
-  }
+  if(u.pathname==='/bridge/status') return json(res,200,{peer:!!peer,snapshot:!!snapshot,browser:!!client,rendererState,uptimeMs:Math.round(performance.now()-hostStartedAt),rendererReadyMs,staticVersion:staticManifest.version});
   if(!['GET','HEAD'].includes(req.method)) {res.writeHead(405);return res.end();}
   try {
-    let file;
-    if(u.pathname==='/bridge/client.js') file=path.join(__dirname,'web-client.js');
-    else if(u.pathname==='/bridge/codec.js') file=path.join(__dirname,'web-codec.js');
-    else if(u.pathname==='/bridge/capnweb.js') file=path.join(process.env.CHATGPT_WEB_ROOT,'node_modules/capnweb/dist/index.js');
-    else if(u.pathname==='/bridge/rpc-client.mjs') file=path.join(__dirname,'web-rpc-client.mjs');
-    else if(u.pathname==='/bridge/browser-native.js') file=path.join(__dirname,'web-browser-native.js');
-    else if(u.pathname==='/bridge/resources.js') file=path.join(__dirname,'web-resources.js');
-    else if(u.pathname==='/bridge/attachments.js') file=path.join(__dirname,'web-attachments.js');
-    else if(u.pathname==='/bridge/folder-picker.js') file=path.join(__dirname,'web-folder-picker.js');
-    else if(u.pathname==='/bridge/folder-picker.css') file=path.join(__dirname,'web-folder-picker.css');
-    else {
-      const relative=decodeURIComponent(u.pathname).replace(/^\/+/, '');
-      file=path.resolve(webroot,relative || 'index.html');
-      if(!file.startsWith(webroot+path.sep)) {res.writeHead(403);return res.end();}
-      if(!fs.existsSync(file) && !path.extname(relative)) file=path.join(webroot,'index.html');
-    }
-    let data=fs.readFileSync(file);
-    if(file.startsWith(webroot+path.sep)&&path.extname(file)==='.js'){
-      const source=data.toString();
-      if(source.includes('app://fs'))data=Buffer.from(source.replace(/(["'`])app:\/\/fs\1/g,JSON.stringify(origin)));
-    }
-    if(path.basename(file)==='index.html') {
-      let html=data.toString().replace('<head>','<head><base href="/">');
-      html=html.replace('script-src ',`script-src &#39;sha256-${startupHash}&#39; `);
-      html=html.replace(entryMatch[0],`<script>${startupScript}</script>`+entryMatch[0]);
-      html=html.replace(/<meta name="referrer" content="[^"]+"/,'<meta name="referrer" content="no-referrer"');
-      html=html.replace('connect-src ',`connect-src ${access.websocketOrigin} `);
-      html=html.replace(entryMatch[0],'<script src="/bridge/codec.js"></script><link rel="stylesheet" href="/bridge/folder-picker.css"><script src="/bridge/folder-picker.js"></script><script src="/bridge/attachments.js"></script><script src="/bridge/resources.js"></script><script src="/bridge/browser-native.js"></script><script src="/bridge/client.js"></script><script type="module" src="/bridge/entry.js"></script>');
-      data=Buffer.from(html);
-    }
-    await sendStatic(req,res,data,mime[path.extname(file)]||'application/octet-stream');
-  }catch(e){res.writeHead(404,{'cache-control':'no-store'});res.end('Not found');}
+    const versioned=u.pathname.startsWith(staticPrefix);
+    if(u.pathname.startsWith('/static/')&&!versioned){res.writeHead(404,{'cache-control':'no-store'});return res.end('Resource version expired; reload the page');}
+    const relative=decodeURIComponent(versioned?u.pathname.slice(staticPrefix.length):u.pathname.slice(1));
+    if(Object.hasOwn(staticManifest.entries,relative))return await sendPrepared(req,res,relative,{immutable:versioned});
+    if(!versioned&&(relative===''||relative==='index.html'||!path.extname(relative)))return await sendStatic(req,res,page,'text/html');
+    res.writeHead(404,{'cache-control':'no-store'});res.end('Not found');
+  }catch(e){if(!res.headersSent){res.writeHead(500,{'cache-control':'no-store'});res.end('Resource unavailable');}else res.destroy();}
 });
 const wss = new WebSocketServer({noServer:true,maxPayload:32*1024*1024});
 server.on('upgrade',(req,socket,head)=>{
@@ -148,7 +120,7 @@ ipcMain.on('chatgpt-web:from-relay',(event,data)=>{
   if(message.kind==='snapshot'){
     const wc=event.sender;
     peer={readyState:1,send:data=>{if(!wc.isDestroyed())wc.send('chatgpt-web:to-relay',data);},close:()=>{}};
-    snapshot=message.value;rendererState='ready';console.log('[chatgpt-web] renderer bridge ready');return;
+    snapshot=message.value;rendererState='ready';rendererReadyMs=Math.round(performance.now()-hostStartedAt);console.log('[chatgpt-web] renderer bridge ready');return;
   }
   if(message.kind==='event' && snapshot){
     const eventValue=codec.decode(message.value);
@@ -172,7 +144,7 @@ app.on('web-contents-created',(_event,wc)=>{
     relayTargets.delete(wc.id);
     if(relayContentsId!==wc.id)return;
     if(destroyed)relayContentsId=null;
-    peer=null;snapshot=null;rendererState=reason;
+    peer=null;snapshot=null;rendererState=reason;rendererReadyMs=null;
     console.warn('[chatgpt-web]',reason);
     client?.close(1012,reason);
   };

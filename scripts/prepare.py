@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Create a disposable App copy; never modify the installed package."""
-import hashlib, json, os, pathlib, shutil, struct, datetime, fcntl
+import hashlib, json, os, pathlib, shutil, struct, datetime, fcntl, subprocess
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SOURCE = pathlib.Path(os.environ.get('CHATGPT_APP_DIR', '/usr/lib/chatgpt'))
 RUNTIME = ROOT / '.runtime'
@@ -41,7 +41,7 @@ with archive.open('rb') as f:
 });\n''').encode(),
         '.vite/build/web-entry.cjs': f'require("./web-main.cjs");\nrequire("./{pathlib.PurePosixPath(original_main).name}");\n'.encode(),
     }
-    for name in ['main.cjs', 'static.cjs', 'startup.js', 'lifecycle.cjs', 'access.cjs', 'client.js', 'relay.js', 'codec.js', 'folders.cjs', 'uploads.cjs', 'downloads.cjs', 'files.cjs', 'rpc-client.mjs', 'browser-native.js', 'resources.js', 'attachments.js', 'folder-picker.js', 'folder-picker.css']:
+    for name in ['main.cjs', 'page.cjs', 'static.cjs', 'startup.js', 'lifecycle.cjs', 'access.cjs', 'client.js', 'relay.js', 'codec.js', 'folders.cjs', 'uploads.cjs', 'downloads.cjs', 'files.cjs', 'rpc-client.mjs', 'browser-native.js', 'resources.js', 'attachments.js', 'folder-picker.js', 'folder-picker.css']:
         additions['.vite/build/web-' + name] = (ROOT / 'bridge' / name).read_bytes()
     payload_size = archive.stat().st_size - base
     offset = payload_size
@@ -90,8 +90,9 @@ with archive.open('rb') as f:
     out.replace(RUNTIME / 'resources/app.asar')
 manifest = {'prepared_at': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'source': str(archive),
     'app_version': package['version'], 'source_sha256': hashlib.file_digest(archive.open('rb'), 'sha256').hexdigest(),
-    'original_main': original_main, 'patch_files': {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted([*(ROOT/'bridge').iterdir(), ROOT/'scripts/prepare.py', ROOT/'scripts/start.sh', ROOT/'scripts/bootstrap.py', ROOT/'scripts/proxy.sh', ROOT/'package-lock.json']) if p.is_file()}}
+    'original_main': original_main, 'patch_files': {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted([*(ROOT/'bridge').iterdir(), ROOT/'scripts/prepare.py', ROOT/'scripts/prepare-static.cjs', ROOT/'scripts/start.sh', ROOT/'scripts/bootstrap.py', ROOT/'scripts/proxy.sh', ROOT/'package-lock.json']) if p.is_file()}}
 (ROOT/'prepare-manifest.json').write_text(json.dumps(manifest, indent=2)+'\n')
 with (ROOT/'.logs/prepare-history.jsonl').open('a') as log:
     log.write(json.dumps(manifest)+'\n')
 print(json.dumps(manifest, indent=2))
+subprocess.run(['node', str(ROOT/'scripts/prepare-static.cjs')], check=True)

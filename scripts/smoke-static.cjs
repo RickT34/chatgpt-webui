@@ -16,10 +16,12 @@ async function main(){
  const login=await request(fs.readFileSync('.logs/access-url','utf8').trim());
  const cookie=(login.headers['set-cookie']?.[0]||'').split(';')[0];
  const html=await request('/',{cookie});assert.equal(html.status,200);
- const asset=html.body.toString().match(/assets\/app-shared-[\w-]+\.js/);assert(asset,'Expected original App shared module');
- for(const path of ['/'+asset[0],'/bridge/client.js','/bridge/entry.js','/']){
+ const asset=html.body.toString().match(/href="(\/static\/([a-f0-9]{64})\/assets\/app-shared-[\w-]+\.js)"/);assert(asset,'Expected versioned original App shared module');
+ const prefix=`/static/${asset[2]}`;
+ assert(html.body.toString().includes(`${prefix}/bridge/rpc-client.mjs`));
+ for(const path of [asset[1],`${prefix}/bridge/client.js`,`${prefix}/bridge/entry.js`,asset[1].slice(prefix.length),'/bridge/client.js','/']){
   const raw=await request(path,{cookie,'accept-encoding':'identity'});assert.equal(raw.status,200);
-  assert.equal(raw.headers['cache-control'],'private, no-cache');
+  assert.equal(raw.headers['cache-control'],path.startsWith(prefix)?'private, max-age=31536000, immutable':'private, no-cache');
   for(const format of ['br','gzip']){
    const result=await request(path,{cookie,'accept-encoding':format});
    assert.equal(result.headers['content-encoding'],format);assert.equal(result.headers.vary,'Accept-Encoding');
@@ -34,7 +36,9 @@ async function main(){
    const denied=await request(path,{'if-none-match':raw.headers.etag});assert.equal(denied.status,401);assert.equal(denied.headers['cache-control'],'no-store');
   }
  }
+ const expired=await request('/static/'+'0'.repeat(64)+'/assets/unknown.js',{cookie});
+ assert.equal(expired.status,404);assert.equal(expired.headers['cache-control'],'no-store');
  for(const path of ['/bridge/bootstrap','/bridge/status'])assert.equal((await request(path,{cookie})).headers['cache-control'],'no-store');
- console.log('PASS: compression, exact decompression, authenticated revalidation, HEAD, private cache and dynamic no-store');
+ console.log('PASS: prepared compression, exact decompression, authenticated revalidation, HEAD, versioned private cache, expired-version rejection and dynamic no-store');
 }
 main().catch(error=>{console.error(error);process.exitCode=1;});

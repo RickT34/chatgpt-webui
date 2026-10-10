@@ -1,6 +1,11 @@
 'use strict';
+// Capture the versioned script URL before the first await. Download the RPC
+// adapter while bootstrap/WS are pending; execution of the App still waits.
+const chatgptWebRpcUrl=new URL('rpc-client.mjs',document.currentScript.src).href;
 window.chatgptWebReady=(async()=>{
   const startup=window.chatgptWebStartup;
+  const adapter=startup.wait(import(chatgptWebRpcUrl),120000,'桥接模块下载超时。');
+  adapter.catch(()=>{});
   startup.stage('等待宿主 App',65000);
   const bootstrap=window.chatgptWebCodec.decode(await startup.bootstrap(fetch));
   if(startup.failed)throw Error('启动已中止，请重试。');
@@ -12,7 +17,7 @@ window.chatgptWebReady=(async()=>{
   window.addEventListener('pagehide',()=>ws.close(1000,'Page left'),{once:true});
   await startup.connect(ws);
   startup.stage('下载桥接模块');
-  const {adaptAppHost}=await startup.wait(import('/bridge/rpc-client.mjs'),120000,'桥接模块下载超时。');
+  const {adaptAppHost}=await adapter;
   if(startup.failed)throw Error('启动已中止，请重试。');
   const adaptedPorts=new Map();
   let nextId=1;

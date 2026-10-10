@@ -50,3 +50,26 @@ module.exports=function createStaticSender({maxBytes=64*1024*1024}={}){
   res.writeHead(200,headers);res.end(req.method==='HEAD'?undefined:body);
  };
 };
+
+// Prepared bodies live on disk, so conditional requests need neither a file
+// read nor hashing/compression, and large responses use stream backpressure.
+module.exports.prepared=function preparedSender(directory,manifest){
+ const fs=require('node:fs'),path=require('node:path');
+ return async function send(req,res,name,{immutable=false}={}){
+  const entry=Object.hasOwn(manifest.entries,name)?manifest.entries[name]:null;
+  if(!entry){res.writeHead(404,{'cache-control':'no-store'});res.end('Not found');return;}
+  const format=encoding(req.headers['accept-encoding'],!!entry.variants.br);
+  if(!format){res.writeHead(406,{'cache-control':'no-store','vary':'Accept-Encoding'});res.end();return;}
+  const headers={'content-type':entry.type,'cache-control':immutable?'private, max-age=31536000, immutable':'private, no-cache',
+   etag:entry.etag,vary:'Accept-Encoding','x-content-type-options':'nosniff'};
+  if(format!=='identity')headers['content-encoding']=format;
+  const tags=(req.headers['if-none-match']||'').split(',').map(v=>v.trim().replace(/^W\//,''));
+  if(tags.includes('*')||tags.includes(entry.etag.slice(2))){res.writeHead(304,headers);res.end();return;}
+  const variant=entry.variants[format];headers['content-length']=variant.size;
+  if(req.method==='HEAD'){res.writeHead(200,headers);res.end();return;}
+  const stream=fs.createReadStream(path.join(directory,'objects',variant.file));
+  stream.once('open',()=>{res.writeHead(200,headers);stream.pipe(res);});
+  stream.on('error',()=>{if(!res.headersSent){res.writeHead(500,{'cache-control':'no-store'});res.end('Prepared resource is unavailable; run setup again');}else res.destroy();});
+  res.on('close',()=>stream.destroy());
+ };
+};

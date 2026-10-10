@@ -1,0 +1,29 @@
+'use strict';
+// Keep preparation and HTTP rendering on the same entry/preload contract.
+function entryPath(html){
+ const match=html.match(/<script type="module" crossorigin src="([^"]+)"><\/script>/);
+ if(!match)throw Error('Unsupported App: cannot locate renderer module entry');
+ return match[1].replace(/^\.\//,'/');
+}
+function entryScript(html){
+ const entry='../'+entryPath(html).replace(/^\//,'');
+ return `try{await window.chatgptWebReady;const s=window.chatgptWebStartup;if(s.failed)throw Error('启动已中止');s.stage('下载并启动原界面');await s.wait(import(${JSON.stringify(entry)}),120000,'原界面模块加载超时');s.entryReady();}catch(e){window.chatgptWebStartup.fail(e);}`;
+}
+function renderPage(html,{startup,version,websocketOrigin,preloads=[]}){
+ const prefix=`/static/${version}`;
+ const hash=require('node:crypto').createHash('sha256').update(startup).digest('base64');
+ const scripts=['codec.js','folder-picker.js','attachments.js','resources.js','browser-native.js','client.js'];
+ // Explicit URLs preserve the root base used by the original router. Relative
+ // imports inside versioned modules automatically inherit the same version.
+ html=html.replace(/<script type="module" crossorigin src="[^"]+"><\/script>/,
+  `<script>${startup}</script><link rel="stylesheet" href="/bridge/folder-picker.css">`+
+  scripts.map(file=>`<script defer src="/bridge/${file}"></script>`).join('')+
+  '<script type="module" src="/bridge/entry.js"></script>');
+ html=html.replace(/\b(src|href)="(?:\.\/|\/)(assets\/[^"<>]+|bridge\/[^"<>]+)"/g,`$1="${prefix}/$2"`);
+ const links=[...new Set(preloads)].map(file=>`<link rel="modulepreload" crossorigin href="${prefix}/${file}">`).join('');
+ return html.replace('<head>','<head><base href="/">').replace('</head>',`${links}</head>`)
+  .replace('script-src ',`script-src &#39;sha256-${hash}&#39; `)
+  .replace(/<meta name="referrer" content="[^"]+"/,'<meta name="referrer" content="no-referrer"')
+  .replace('connect-src ',`connect-src ${websocketOrigin} `);
+}
+module.exports={entryPath,entryScript,renderPage};

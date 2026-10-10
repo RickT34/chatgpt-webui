@@ -264,6 +264,7 @@ def main(arguments):
         os.environ['CHATGPT_WEB_LOCK_FD'] = str(lock.fileno())
         subprocess.run([sys.executable, str(ROOT / 'scripts/prepare.py')], check=True, pass_fds=(lock.fileno(),))
         del os.environ['CHATGPT_WEB_LOCK_FD']
+    subprocess.run(['node', str(ROOT / 'scripts/prepare-static.cjs'), *(['--check'] if check else [])], check=True)
     if check or setup_only:
         print('Environment ready.', flush=True)
         return

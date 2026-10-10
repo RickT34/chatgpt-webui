@@ -115,3 +115,13 @@ node --experimental-vm-modules scripts/smoke-pdf.cjs
 - 完整原有 29 项本机测试通过；新增首屏状态测试后，定向运行 startup/native-rpc 两个测试文件通过。
 - 用原生 whenReady 永不完成的服务验证网页适配方法可返回，isSentryEnabled/reach 仍到达原服务，first_content_visible 回调到达客户端。
 - Node 中的状态测试确认静态 loading 节点移除和 renderer_ready 不会让提示消失；first_content_visible 才会取消超时并结束提示。不将这项测试当作真实浏览器验收。
+
+## 2026-10-10 · 启动优化验证
+
+- `npm test`：33 项通过；`python3 -m unittest discover -s tests -p 'test_*.py'`：13 项通过。HTTP 测试在允许本机回环监听的环境运行；沙箱内监听返回 EPERM。
+- 新增回归覆盖：准确替换 app://fs 常量、保持普通文本、复用未变压缩对象、App 访问源/桥接内容变化后版本失效、首屏依赖预加载、根路由 base/CSP/脚本顺序、各编码解压后的准确字节、404/406、immutable 与未带版本缓存策略、正文不存在时 304/HEAD 仍不读取正文。
+- 实际准备 App 26.930.21537：19,852 个静态资源，缓存对象内容约 693 MiB。一次已有缓存的 `start.sh --setup-only` 检查约 0.333 秒；该数字不包含 Electron 启动或网页加载，也不是跨机器性能保证。
+- 使用独立临时 profile、本机 headless Electron、随机令牌认证运行 `scripts/smoke-static.cjs`、`scripts/smoke.cjs`、`scripts/smoke-pdf.cjs`，全部通过；没有操作用户原 profile 或网页。检查版本与未版本 URL、过期版本拒绝、未认证请求拒绝、HEAD/304、原 preload 消息、128 项真实 App-host 服务及 PDF Worker 的字节/MIME/模块语法。
+- 该临时 profile 的一次宿主就绪时间约 1.255 秒，rendererReadyMs 为 1114。它仅表示桥接 snapshot 已可用，不表示已登录或浏览器首屏完成。临时进程/profile 已清理。
+- 本地响应管线微基准（4 个 app-initial/app-shared JS/CSS，Brotli，输出到 Writable sink）：旧路径首次处理约 256.78 ms，预压缩路径约 6.81 ms；后续正文请求均值约 23.97 → 3.46 ms；条件校验均值约 21.75 → 0.03 ms。旧路径模拟原来的读文件、JS 字符串检查、哈希和内存压缩缓存；不含 ASAR 读取差异、网络或浏览器，未控制 OS 文件缓存。不能把这些数字解释为页面首屏提速比例。
+- 按要求未进行 Docker 测试。浏览器冷缓存/热缓存首屏仍由使用者手动验收：正常重启后首次打开、再次打开，比较 Network 面板的传输与缓存命中以及 `window.chatgptWebStartup.timings`；确认实际登录/聊天页面出现、附件/PDF 可用，更新后获取新版本资源。
